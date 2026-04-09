@@ -23,6 +23,7 @@ Lattice *lattice_create(int dim, int L) {
     lat->dim = dim;
     lat->L = L;
     lat->n_sites = int_pow(L, dim);
+    lat->n_occupied = 0;
     lat->occupied = calloc(lat->n_sites, sizeof(int));
 
     if (lat->occupied == NULL) {

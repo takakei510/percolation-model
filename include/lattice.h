@@ -5,6 +5,7 @@ typedef struct {
     int dim;
     int L;
     int n_sites;
+    int n_occupied;
     int *occupied;
 } Lattice;
 

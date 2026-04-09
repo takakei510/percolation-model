@@ -2,10 +2,13 @@
 #include <string.h>
 #include "cluster.h"
 
-static void swap_clusters(Cluster *a, Cluster *b) {
-    Cluster temp = *a;
-    *a = *b;
-    *b = temp;
+static int compare_cluster_size_desc(const void *a, const void *b) {
+    const Cluster *ca = (const Cluster *)a;
+    const Cluster *cb = (const Cluster *)b;
+
+    if (cb->size > ca->size) return 1;
+    if (cb->size < ca->size) return -1;
+    return 0;
 }
 
 ClusterSet *cluster_find_all(const Lattice *lat) {
@@ -94,9 +97,14 @@ ClusterSet *cluster_find_all(const Lattice *lat) {
 
     cs->n_clusters = cluster_count;
 
-    Cluster *tmp = realloc(clusters, cluster_count * sizeof(Cluster));
+    if (cluster_count == 0) {
+        free(clusters);
+        cs->clusters = NULL;
+        return cs;
+    }
 
-    if (tmp == NULL && cluster_count > 0) {
+    Cluster *tmp = realloc(clusters, cluster_count * sizeof(Cluster));
+    if (tmp == NULL) {
         for (int i = 0; i < cluster_count; i++) {
             free(clusters[i].sites);
         }
@@ -106,18 +114,15 @@ ClusterSet *cluster_find_all(const Lattice *lat) {
     }
 
     cs->clusters = tmp;
-
     return cs;
 }
 
 void cluster_sort_by_size(ClusterSet *cs) {
-    for (int i = 0; i < cs->n_clusters - 1; i++) {
-        for (int j = 0; j < cs->n_clusters - 1 - i; j++) {
-            if (cs->clusters[j].size < cs->clusters[j + 1].size) {
-                swap_clusters(&cs->clusters[j], &cs->clusters[j + 1]);
-            }
-        }
+    if (cs == NULL || cs->n_clusters <= 1) {
+        return;
     }
+
+    qsort(cs->clusters, cs->n_clusters, sizeof(Cluster), compare_cluster_size_desc);
 }
 
 void cluster_free_all(ClusterSet *cs) {

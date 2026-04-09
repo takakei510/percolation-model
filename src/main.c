@@ -7,9 +7,12 @@
 #include "io.h"
 
 int main(void) {
-    int dim = 3;       // 2 or 3
+    int dim = 2;       // 2 or 3
     int L = 20;        // lattice size
     double p = 0.60;   // occupation probability
+
+    int save_cluster_sizes = 0;
+    int save_top_coords = 1;
 
     Lattice *lat = lattice_create(dim, L);
     if (lat == NULL) {
@@ -46,11 +49,17 @@ int main(void) {
     if (!io_save_summary_csv("data/summary.csv", lat, cs, p)) {
         fprintf(stderr, "Failed to save summary.csv\n");
     }
-    if (!io_save_cluster_sizes_csv("data/cluster_sizes.csv", cs)) {
-        fprintf(stderr, "Failed to save cluster_sizes.csv\n");
+
+    if (save_cluster_sizes) {
+        if (!io_save_cluster_sizes_csv("data/cluster_sizes.csv", cs)) {
+            fprintf(stderr, "Failed to save cluster_sizes.csv\n");
+        }
     }
-    if (!io_save_top_clusters_coords_csv("data/top_clusters_coords.csv", lat, cs, 2)) {
-        fprintf(stderr, "Failed to save top_clusters_coords.csv\n");
+
+    if (save_top_coords) {
+        if (!io_save_top_clusters_coords_csv("data/top_clusters_coords.csv", lat, cs, 2)) {
+            fprintf(stderr, "Failed to save top_clusters_coords.csv\n");
+        }
     }
 
     cluster_free_all(cs);
