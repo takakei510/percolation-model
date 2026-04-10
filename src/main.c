@@ -5,14 +5,27 @@
 #include "percolation.h"
 #include "cluster.h"
 #include "io.h"
+#include "config.h"
 
-int main(void) {
-    int dim = 2;       // 2 or 3
-    int L = 20;        // lattice size
-    double p = 0.60;   // occupation probability
+int main(int argc, char *argv[]) {
 
-    int save_cluster_sizes = 0;
-    int save_top_coords = 1;
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s config.txt\n", argv[0]);
+        return 1;
+    }
+
+    Config cfg = {0};
+
+    if (!config_load(argv[1], &cfg)) {
+        return 1;
+    }
+
+    int dim = cfg.dim;
+    int L = cfg.L;
+    double p = cfg.p;
+
+    int save_cluster_sizes = cfg.save_cluster_sizes;
+    int save_top_coords = cfg.save_top_coords;
 
     Lattice *lat = lattice_create(dim, L);
     if (lat == NULL) {
@@ -36,7 +49,7 @@ int main(void) {
     printf("L = %d\n", L);
     printf("p = %.3f\n", p);
     printf("n_sites = %d\n", lat->n_sites);
-    printf("n_occupied = %d\n", percolation_count_occupied(lat));
+    printf("n_occupied = %d\n", lat->n_occupied);
     printf("n_clusters = %d\n", cs->n_clusters);
 
     if (cs->n_clusters > 0) {
