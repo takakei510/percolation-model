@@ -1,4 +1,14 @@
 build/
-data/
+data/*
+!data/.gitkeep
+
 *.o
 *.out
+
+# editor
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
