@@ -2,9 +2,16 @@
 #define CONFIG_H
 
 typedef struct {
+    char mode[32];
     int dim;
     int L;
+
     double p;
+
+    double p_start;
+    double p_end;
+    double dp;
+
     int save_cluster_sizes;
     int save_top_coords;
 } Config;

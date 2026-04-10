@@ -1,0 +1,8 @@
+mode=sweep
+dim=2
+L=20
+p_start=0.10
+p_end=0.80
+dp=0.05
+save_cluster_sizes=0
+save_top_coords=0

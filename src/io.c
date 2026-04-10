@@ -3,19 +3,45 @@
 #include "io.h"
 #include "percolation.h"
 
+static void write_summary_row(FILE *fp, const Lattice *lat, const ClusterSet *cs, double p) {
+    int occupied = percolation_count_occupied(lat);
+    int largest = (cs->n_clusters > 0) ? cs->clusters[0].size : 0;
+    int second = (cs->n_clusters > 1) ? cs->clusters[1].size : 0;
+
+    fprintf(fp, "%.6f,%d,%d,%d,%d,%d,%d,%d\n",
+            p, lat->dim, lat->L, lat->n_sites, occupied, cs->n_clusters, largest, second);
+}
+
 int io_save_summary_csv(const char *filename, const Lattice *lat, const ClusterSet *cs, double p) {
     FILE *fp = fopen(filename, "w");
     if (fp == NULL) {
         return 0;
     }
 
-    int occupied = percolation_count_occupied(lat);
-    int largest = (cs->n_clusters > 0) ? cs->clusters[0].size : 0;
-    int second = (cs->n_clusters > 1) ? cs->clusters[1].size : 0;
-
     fprintf(fp, "p,dim,L,n_sites,n_occupied,n_clusters,largest_size,second_size\n");
-    fprintf(fp, "%.6f,%d,%d,%d,%d,%d,%d,%d\n",
-            p, lat->dim, lat->L, lat->n_sites, occupied, cs->n_clusters, largest, second);
+    write_summary_row(fp, lat, cs, p);
+
+    fclose(fp);
+    return 1;
+}
+
+int io_append_summary_csv(const char *filename, const Lattice *lat, const ClusterSet *cs, double p) {
+    FILE *check = fopen(filename, "r");
+    int file_exists = (check != NULL);
+    if (check != NULL) {
+        fclose(check);
+    }
+
+    FILE *fp = fopen(filename, "a");
+    if (fp == NULL) {
+        return 0;
+    }
+
+    if (!file_exists) {
+        fprintf(fp, "p,dim,L,n_sites,n_occupied,n_clusters,largest_size,second_size\n");
+    }
+
+    write_summary_row(fp, lat, cs, p);
 
     fclose(fp);
     return 1;
