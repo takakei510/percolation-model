@@ -8,6 +8,8 @@ static void trim_newline(char *str) {
 }
 
 int config_load(const char *filename, Config *cfg) {
+    cfg->n_trials = 1;   // デフォルト値
+    
     FILE *fp = fopen(filename, "r");
     if (fp == NULL) {
         fprintf(stderr, "Failed to open config file: %s\n", filename);
@@ -31,6 +33,8 @@ int config_load(const char *filename, Config *cfg) {
             cfg->dim = atoi(value);
         } else if (strcmp(key, "L") == 0) {
             cfg->L = atoi(value);
+        }else if (strcmp(key, "n_trials") == 0) {
+        cfg->n_trials = atoi(value);
         } else if (strcmp(key, "p") == 0) {
             cfg->p = atof(value);
         } else if (strcmp(key, "p_start") == 0) {

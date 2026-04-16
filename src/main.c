@@ -48,8 +48,8 @@ static int run_single(const Config *cfg) {
         printf("second cluster size = %d\n", cs->clusters[1].size);
     }
 
-    if (!io_save_summary_csv("data/summary.csv", lat, cs, p)) {
-        fprintf(stderr, "Failed to save summary.csv\n");
+    if (!io_save_summary_csv_single("data/summary.csv", lat, cs, p)) {
+        fprintf(stderr, "Failed to write summary CSV\n");
     }
 
     if (save_cluster_sizes) {
@@ -72,6 +72,7 @@ static int run_single(const Config *cfg) {
 static int run_sweep(const Config *cfg) {
     int dim = cfg->dim;
     int L = cfg->L;
+    int n_trials = cfg->n_trials;
     double p_start = cfg->p_start;
     double p_end = cfg->p_end;
     double dp = cfg->dp;
@@ -79,10 +80,16 @@ static int run_sweep(const Config *cfg) {
     int save_cluster_sizes = cfg->save_cluster_sizes;
     int save_top_coords = cfg->save_top_coords;
 
+    int n_sites = 1;
+    for (int i = 0; i < dim; i++) {
+        n_sites *= L;
+    }
+    
     if (dp <= 0.0) {
         fprintf(stderr, "Invalid dp. It must be > 0.\n");
         return 0;
     }
+
 
     remove("data/summary.csv");
 
@@ -94,54 +101,46 @@ static int run_sweep(const Config *cfg) {
     printf("dp = %.3f\n", dp);
 
     for (double p = p_start; p <= p_end + 1e-12; p += dp) {
-        Lattice *lat = lattice_create(dim, L);
-        if (lat == NULL) {
-            fprintf(stderr, "Failed to create lattice.\n");
-            return 0;
-        }
 
-        percolation_generate_site(lat, p);
+        double sum_largest = 0.0;
+        double sum_second = 0.0;
+        double sum_occupied = 0.0;
+        double sum_clusters = 0.0;
 
-        ClusterSet *cs = cluster_find_all(lat);
-        if (cs == NULL) {
-            fprintf(stderr, "Failed to find clusters at p = %.6f\n", p);
-            lattice_free(lat);
-            return 0;
-        }
+        for (int trial = 0; trial < n_trials; trial++) {
 
-        cluster_sort_by_size(cs);
+            Lattice *lat = lattice_create(dim, L);
+            percolation_generate_site(lat, p);
 
-        int largest = (cs->n_clusters > 0) ? cs->clusters[0].size : 0;
-        int second = (cs->n_clusters > 1) ? cs->clusters[1].size : 0;
+            ClusterSet *cs = cluster_find_all(lat);
+            cluster_sort_by_size(cs);
 
-        printf("p = %.3f, occupied = %d, clusters = %d, largest = %d, second = %d\n",
-               p, lat->n_occupied, cs->n_clusters, largest, second);
+            int largest = (cs->n_clusters > 0) ? cs->clusters[0].size : 0;
+            int second  = (cs->n_clusters > 1) ? cs->clusters[1].size : 0;
 
-        if (!io_append_summary_csv("data/summary.csv", lat, cs, p)) {
-            fprintf(stderr, "Failed to append summary.csv at p = %.6f\n", p);
+            sum_largest += largest;
+            sum_second  += second;
+            sum_occupied += lat->n_occupied;
+            sum_clusters += cs->n_clusters;
+
             cluster_free_all(cs);
             lattice_free(lat);
-            return 0;
         }
 
-        if (save_cluster_sizes) {
-            char filename[256];
-            snprintf(filename, sizeof(filename), "data/cluster_sizes_p%.3f.csv", p);
-            if (!io_save_cluster_sizes_csv(filename, cs)) {
-                fprintf(stderr, "Failed to save %s\n", filename);
-            }
-        }
+        double mean_largest = sum_largest / n_trials;
+        double mean_second  = sum_second / n_trials;
+        double mean_occupied = sum_occupied / n_trials;
+        double mean_clusters = sum_clusters / n_trials;
 
-        if (save_top_coords) {
-            char filename[256];
-            snprintf(filename, sizeof(filename), "data/top_clusters_coords_p%.3f.csv", p);
-            if (!io_save_top_clusters_coords_csv(filename, lat, cs, 2)) {
-                fprintf(stderr, "Failed to save %s\n", filename);
-            }
-        }
+        printf("p=%.3f, mean_L1=%.2f, mean_L2=%.2f\n",
+            p, mean_largest, mean_second);
 
-        cluster_free_all(cs);
-        lattice_free(lat);
+        io_append_summary_csv_mean(
+            "data/summary.csv",
+            p, dim, L, n_sites, n_trials,
+            mean_occupied, mean_clusters,
+            mean_largest, mean_second
+        );
     }
 
     return 1;

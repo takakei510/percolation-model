@@ -5,6 +5,7 @@ typedef struct {
     char mode[32];
     int dim;
     int L;
+    int n_trials;
 
     double p;
 

@@ -1,8 +1,9 @@
 mode=sweep
-dim=2
-L=20
+dim=3
+L=100
+n_trials=10
 p_start=0.10
 p_end=0.80
-dp=0.05
+dp=0.01
 save_cluster_sizes=0
 save_top_coords=0

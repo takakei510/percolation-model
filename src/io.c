@@ -3,29 +3,37 @@
 #include "io.h"
 #include "percolation.h"
 
-static void write_summary_row(FILE *fp, const Lattice *lat, const ClusterSet *cs, double p) {
-    int occupied = percolation_count_occupied(lat);
-    int largest = (cs->n_clusters > 0) ? cs->clusters[0].size : 0;
-    int second = (cs->n_clusters > 1) ? cs->clusters[1].size : 0;
-
-    fprintf(fp, "%.6f,%d,%d,%d,%d,%d,%d,%d\n",
-            p, lat->dim, lat->L, lat->n_sites, occupied, cs->n_clusters, largest, second);
-}
-
-int io_save_summary_csv(const char *filename, const Lattice *lat, const ClusterSet *cs, double p) {
+int io_save_summary_csv_single(const char *filename,
+                               const Lattice *lat,
+                               const ClusterSet *cs,
+                               double p) {
     FILE *fp = fopen(filename, "w");
     if (fp == NULL) {
         return 0;
     }
 
+    int occupied = percolation_count_occupied(lat);
+    int largest = (cs->n_clusters > 0) ? cs->clusters[0].size : 0;
+    int second = (cs->n_clusters > 1) ? cs->clusters[1].size : 0;
+
     fprintf(fp, "p,dim,L,n_sites,n_occupied,n_clusters,largest_size,second_size\n");
-    write_summary_row(fp, lat, cs, p);
+    fprintf(fp, "%.6f,%d,%d,%d,%d,%d,%d,%d\n",
+            p, lat->dim, lat->L, lat->n_sites, occupied, cs->n_clusters, largest, second);
 
     fclose(fp);
     return 1;
 }
 
-int io_append_summary_csv(const char *filename, const Lattice *lat, const ClusterSet *cs, double p) {
+int io_append_summary_csv_mean(const char *filename,
+                               double p,
+                               int dim,
+                               int L,
+                               int n_sites,
+                               int n_trials,
+                               double mean_occupied,
+                               double mean_clusters,
+                               double mean_largest,
+                               double mean_second) {
     FILE *check = fopen(filename, "r");
     int file_exists = (check != NULL);
     if (check != NULL) {
@@ -38,10 +46,12 @@ int io_append_summary_csv(const char *filename, const Lattice *lat, const Cluste
     }
 
     if (!file_exists) {
-        fprintf(fp, "p,dim,L,n_sites,n_occupied,n_clusters,largest_size,second_size\n");
+        fprintf(fp, "p,dim,L,n_sites,n_trials,mean_occupied,mean_clusters,mean_largest,mean_second\n");
     }
 
-    write_summary_row(fp, lat, cs, p);
+    fprintf(fp, "%.6f,%d,%d,%d,%d,%.6f,%.6f,%.6f,%.6f\n",
+            p, dim, L, n_sites, n_trials,
+            mean_occupied, mean_clusters, mean_largest, mean_second);
 
     fclose(fp);
     return 1;
