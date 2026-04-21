@@ -33,7 +33,11 @@ int io_append_summary_csv_mean(const char *filename,
                                double mean_occupied,
                                double mean_clusters,
                                double mean_largest,
-                               double mean_second) {
+                               double mean_second,
+                               double std_occupied,
+                               double std_clusters,
+                               double std_largest,
+                               double std_second) {
     FILE *check = fopen(filename, "r");
     int file_exists = (check != NULL);
     if (check != NULL) {
@@ -46,12 +50,19 @@ int io_append_summary_csv_mean(const char *filename,
     }
 
     if (!file_exists) {
-        fprintf(fp, "p,dim,L,n_sites,n_trials,mean_occupied,mean_clusters,mean_largest,mean_second\n");
+        fprintf(fp,
+                "p,dim,L,n_sites,n_trials,"
+                "mean_occupied,mean_clusters,mean_largest,mean_second,"
+                "std_occupied,std_clusters,std_largest,std_second\n");
     }
 
-    fprintf(fp, "%.6f,%d,%d,%d,%d,%.6f,%.6f,%.6f,%.6f\n",
+    fprintf(fp,
+            "%.6f,%d,%d,%d,%d,"
+            "%.6f,%.6f,%.6f,%.6f,"
+            "%.6f,%.6f,%.6f,%.6f\n",
             p, dim, L, n_sites, n_trials,
-            mean_occupied, mean_clusters, mean_largest, mean_second);
+            mean_occupied, mean_clusters, mean_largest, mean_second,
+            std_occupied, std_clusters, std_largest, std_second);
 
     fclose(fp);
     return 1;
