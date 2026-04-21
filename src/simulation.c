@@ -108,6 +108,15 @@ int run_single_simulation(const Config *cfg) {
 
     cluster_sort_by_size(cs);
 
+    printf("cluster_view_mode = %s\n",cfg->cluster_view_mode);
+    printf("n_cluster =%d\n",cs->n_clusters);
+    if(cs->n_clusters > 0){
+        printf("largest size =%d\n",cs->clusters[0].size);
+    }
+    if(cs->n_clusters > 1){
+        printf("second size =%d\n",cs->clusters[1].size);
+    }
+
     printf("mode = single\n");
     printf("dim = %d\n", dim);
     printf("L = %d\n", L);
@@ -122,9 +131,15 @@ int run_single_simulation(const Config *cfg) {
     if (cs->n_clusters > 1) {
         printf("second cluster size = %d\n", cs->clusters[1].size);
     }
-
     if (!io_save_summary_csv_single("data/summary.csv", lat, cs, p)) {
         fprintf(stderr, "Failed to write summary CSV\n");
+    }
+    if (!io_save_selected_clusters_coords_csv("data/cluster_coords.csv",
+                                            lat,
+                                            cs,
+                                            cfg->cluster_view_mode)) {
+        fprintf(stderr, "Failed to save cluster_coords.csv (mode=%s)\n",
+                cfg->cluster_view_mode);
     }
 
     cluster_free_all(cs);

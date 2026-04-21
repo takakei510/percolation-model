@@ -31,4 +31,9 @@ int io_save_top_clusters_coords_csv(const char *filename,
                                     const ClusterSet *cs,
                                     int top_k);
 
+int io_save_selected_clusters_coords_csv(const char *filename,
+                                         const Lattice *lat,
+                                         const ClusterSet *cs,
+                                         const char *view_mode);
+
 #endif

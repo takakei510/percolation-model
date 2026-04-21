@@ -8,8 +8,10 @@ static void trim_newline(char *str) {
 }
 
 int config_load(const char *filename, Config *cfg) {
-    cfg->n_trials = 1;   // デフォルト値
-    
+    cfg->n_trials = 1;
+    strncpy(cfg->cluster_view_mode, "largest_only", sizeof(cfg->cluster_view_mode) - 1);
+    cfg->cluster_view_mode[sizeof(cfg->cluster_view_mode) - 1] = '\0';
+
     FILE *fp = fopen(filename, "r");
     if (fp == NULL) {
         fprintf(stderr, "Failed to open config file: %s\n", filename);
@@ -33,8 +35,6 @@ int config_load(const char *filename, Config *cfg) {
             cfg->dim = atoi(value);
         } else if (strcmp(key, "L") == 0) {
             cfg->L = atoi(value);
-        }else if (strcmp(key, "n_trials") == 0) {
-        cfg->n_trials = atoi(value);
         } else if (strcmp(key, "p") == 0) {
             cfg->p = atof(value);
         } else if (strcmp(key, "p_start") == 0) {
@@ -43,10 +43,15 @@ int config_load(const char *filename, Config *cfg) {
             cfg->p_end = atof(value);
         } else if (strcmp(key, "dp") == 0) {
             cfg->dp = atof(value);
+        } else if (strcmp(key, "n_trials") == 0) {
+            cfg->n_trials = atoi(value);
         } else if (strcmp(key, "save_cluster_sizes") == 0) {
             cfg->save_cluster_sizes = atoi(value);
         } else if (strcmp(key, "save_top_coords") == 0) {
             cfg->save_top_coords = atoi(value);
+        } else if (strcmp(key, "cluster_view_mode") == 0) {
+            strncpy(cfg->cluster_view_mode, value, sizeof(cfg->cluster_view_mode) - 1);
+            cfg->cluster_view_mode[sizeof(cfg->cluster_view_mode) - 1] = '\0';
         }
     }
 

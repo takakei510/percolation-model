@@ -1,0 +1,8 @@
+mode=single
+dim=3
+L=60
+n_trials=1
+p=0.31
+save_cluster_sizes=1
+save_top_coords=1
+cluster_view_mode=second_only

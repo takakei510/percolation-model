@@ -3,9 +3,9 @@
 
 typedef struct {
     char mode[32];
+
     int dim;
     int L;
-    int n_trials;
 
     double p;
 
@@ -13,8 +13,12 @@ typedef struct {
     double p_end;
     double dp;
 
+    int n_trials;
+
     int save_cluster_sizes;
     int save_top_coords;
+
+    char cluster_view_mode[32];
 } Config;
 
 int config_load(const char *filename, Config *cfg);

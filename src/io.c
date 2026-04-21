@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "io.h"
 #include "percolation.h"
 
@@ -112,6 +113,117 @@ int io_save_top_clusters_coords_csv(const char *filename, const Lattice *lat, co
             } else {
                 fprintf(fp, "%d,%d\n", i + 1, site);
             }
+        }
+    }
+
+    fclose(fp);
+    return 1;
+}
+
+int io_save_selected_clusters_coords_csv(const char *filename,
+                                         const Lattice *lat,
+                                         const ClusterSet *cs,
+                                         const char *view_mode) {
+    if (lat == NULL || cs == NULL || cs->n_clusters == 0 || view_mode == NULL) {
+        return 0;
+    }
+
+    FILE *fp = fopen(filename, "w");
+    if (fp == NULL) {
+        return 0;
+    }
+
+    if (lat->dim == 2) {
+        fprintf(fp, "site_index,x,y,cluster_rank\n");
+    } else if (lat->dim == 3) {
+        fprintf(fp, "site_index,x,y,z,cluster_rank\n");
+    } else {
+        fclose(fp);
+        return 0;
+    }
+
+    int start_rank = 0;
+    int end_rank = 0;
+
+    if (strcmp(view_mode, "largest_only") == 0) {
+        start_rank = 0;
+        end_rank = 0;
+    } else if (strcmp(view_mode, "second_only") == 0) {
+        if (cs->n_clusters < 2) {
+            fclose(fp);
+            return 0;
+        }
+        start_rank = 1;
+        end_rank = 1;
+    } else if (strcmp(view_mode, "top2") == 0) {
+        start_rank = 0;
+        end_rank = (cs->n_clusters >= 2) ? 1 : 0;
+    } else {
+        fclose(fp);
+        return 0;
+    }
+    /*
+    printf("view_mode =%s\n",view_mode);
+    printf("n_clusters (io) = %d\n",cs->n_clusters);
+    printf("start_rank =%d, end_rank =%d\n",start_rank, end_rank);
+    */
+    int coord[3] = {0, 0, 0};
+
+    for (int rank = start_rank; rank <= end_rank; rank++) {
+        const Cluster *cluster = &cs->clusters[rank];
+
+        //printf("writing cluster rank =%d, size = %d\n",rank + 1,cluster->size);
+
+        for (int i = 0; i < cluster->size; i++) {
+            int site = cluster->sites[i];
+            lattice_index_to_coord(site, coord, lat->dim, lat->L);
+
+            if (lat->dim == 2) {
+                fprintf(fp, "%d,%d,%d,%d\n",
+                        site, coord[0], coord[1], rank + 1);
+            } else {
+                fprintf(fp, "%d,%d,%d,%d,%d\n",
+                        site, coord[0], coord[1], coord[2], rank + 1);
+            }
+        }
+    }
+
+    fclose(fp);
+    return 1;
+}
+
+int io_save_largest_cluster_coords_csv(const char *filename,
+                                       const Lattice *lat,
+                                       const ClusterSet *cs) {
+    if (cs == NULL || cs->n_clusters == 0) {
+        return 0;
+    }
+
+    FILE *fp = fopen(filename, "w");
+    if (fp == NULL) {
+        return 0;
+    }
+
+    if (lat->dim == 2) {
+        fprintf(fp, "site_index,x,y\n");
+    } else if (lat->dim == 3) {
+        fprintf(fp, "site_index,x,y,z\n");
+    } else {
+        fclose(fp);
+        return 0;
+    }
+
+    int coord[3] = {0, 0, 0};
+    const Cluster *largest = &cs->clusters[0];
+
+    for (int i = 0; i < largest->size; i++) {
+        int site = largest->sites[i];
+        lattice_index_to_coord(site, coord, lat->dim, lat->L);
+
+        if (lat->dim == 2) {
+            fprintf(fp, "%d,%d,%d\n", site, coord[0], coord[1]);
+        } else {
+            fprintf(fp, "%d,%d,%d,%d\n", site, coord[0], coord[1], coord[2]);
         }
     }
 
