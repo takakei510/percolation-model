@@ -23,6 +23,8 @@ int main(int argc, char *argv[]) {
         return run_single_simulation(&cfg) ? 0 : 1;
     } else if (strcmp(cfg.mode, "sweep") == 0) {
         return run_sweep_simulation(&cfg) ? 0 : 1;
+    } else if (strcmp(cfg.mode, "size_sweep") == 0) {
+        return run_size_sweep_simulation(&cfg) ? 0 : 1;
     } else {
         fprintf(stderr, "Unknown mode: %s\n", cfg.mode);
         fprintf(stderr, "Use mode=single or mode=sweep in config file.\n");

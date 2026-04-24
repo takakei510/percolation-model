@@ -52,6 +52,12 @@ int config_load(const char *filename, Config *cfg) {
         } else if (strcmp(key, "cluster_view_mode") == 0) {
             strncpy(cfg->cluster_view_mode, value, sizeof(cfg->cluster_view_mode) - 1);
             cfg->cluster_view_mode[sizeof(cfg->cluster_view_mode) - 1] = '\0';
+        } else if (strcmp(key, "L_start") == 0) {
+            cfg->L_start = atoi(value);
+        } else if (strcmp(key, "L_max") == 0) {
+            cfg->L_max = atoi(value);
+        } else if (strcmp(key, "L_multiplier") == 0) {
+            cfg->L_multiplier = atof(value);
         }
     }
 

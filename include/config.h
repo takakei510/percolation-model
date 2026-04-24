@@ -14,6 +14,10 @@ typedef struct {
     double dp;
 
     int n_trials;
+    
+    int L_start;
+    int L_max;
+    double L_multiplier;
 
     int save_cluster_sizes;
     int save_top_coords;

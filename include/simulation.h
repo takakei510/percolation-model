@@ -18,4 +18,6 @@ typedef struct {
 int run_single_simulation(const Config *cfg);
 int run_sweep_simulation(const Config *cfg);
 
+int run_size_sweep_simulation(const Config *cfg);
+
 #endif

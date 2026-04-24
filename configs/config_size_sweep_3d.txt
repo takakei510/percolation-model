@@ -1,0 +1,8 @@
+mode=size_sweep
+dim=3
+p=0.3116
+L_start=16
+L_max=64
+L_multiplier=2
+n_trials=5
+cluster_view_mode=top2

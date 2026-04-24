@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include "simulation.h"
 #include "lattice.h"
 #include "percolation.h"
@@ -13,6 +16,18 @@ static int compute_n_sites(int dim, int L) {
         n_sites *= L;
     }
     return n_sites;
+}
+
+static void create_output_dirs(int dim) {
+    mkdir("data", 0777);
+
+    if (dim == 2) {
+        mkdir("data/2d", 0777);
+        mkdir("data/2d/size_sweep_clusters", 0777);
+    } else if (dim == 3) {
+        mkdir("data/3d", 0777);
+        mkdir("data/3d/size_sweep_clusters", 0777);
+    }
 }
 
 static SweepStats compute_sweep_stats_for_p(int dim, int L, double p, int n_trials) {
@@ -202,5 +217,130 @@ int run_sweep_simulation(const Config *cfg) {
         }
     }
 
+    return 1;
+}
+
+int run_size_sweep_simulation(const Config *cfg) {
+    int dim = cfg->dim;
+    double p = cfg->p;
+    int n_trials = cfg->n_trials;
+
+    int L = cfg->L_start;
+    int L_max = cfg->L_max;
+    double mult = cfg->L_multiplier;
+
+    if (dim != 2 && dim != 3) {
+        fprintf(stderr, "dim must be 2 or 3.\n");
+        return 0;
+    }
+
+    if (L <= 0 || L_max <= 0 || L > L_max) {
+        fprintf(stderr, "Invalid L_start or L_max.\n");
+        return 0;
+    }
+
+    if (mult <= 1.0) {
+        fprintf(stderr, "L_multiplier must be > 1.0.\n");
+        return 0;
+    }
+
+    if (n_trials <= 0) {
+        fprintf(stderr, "n_trials must be > 0.\n");
+        return 0;
+    }
+
+    create_output_dirs(dim);
+
+    const char *dim_dir = (dim == 2) ? "data/2d" : "data/3d";
+
+    char time_filename[256];
+    snprintf(time_filename, sizeof(time_filename), "%s/time_vs_L.csv", dim_dir);
+
+    FILE *fp = fopen(time_filename, "w");
+    if (fp == NULL) {
+        fprintf(stderr, "Failed to open %s\n", time_filename);
+        return 0;
+    }
+
+    fprintf(fp,
+            "L,n_sites,n_trials,time_sec,mean_largest,mean_second,std_largest,std_second\n");
+
+    printf("mode = size_sweep\n");
+    printf("dim = %d\n", dim);
+    printf("p = %.6f\n", p);
+    printf("L_start = %d\n", L);
+    printf("L_max = %d\n", L_max);
+    printf("L_multiplier = %.3f\n", mult);
+    printf("n_trials = %d\n", n_trials);
+
+    while (L <= L_max) {
+        int n_sites = compute_n_sites(dim, L);
+
+        clock_t t0 = clock();
+        SweepStats stats = compute_sweep_stats_for_p(dim, L, p, n_trials);
+        clock_t t1 = clock();
+
+        double elapsed = (double)(t1 - t0) / CLOCKS_PER_SEC;
+
+        fprintf(fp,
+                "%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%.6f\n",
+                L,
+                n_sites,
+                n_trials,
+                elapsed,
+                stats.mean_largest,
+                stats.mean_second,
+                stats.std_largest,
+                stats.std_second);
+
+        char cluster_filename[256];
+        snprintf(cluster_filename,
+                 sizeof(cluster_filename),
+                 "%s/size_sweep_clusters/cluster_coords_L_%d.csv",
+                 dim_dir,
+                 L);
+
+        Lattice *lat = lattice_create(dim, L);
+        if (lat == NULL) {
+            fprintf(stderr, "Failed to create lattice for L=%d.\n", L);
+            fclose(fp);
+            return 0;
+        }
+
+        percolation_generate_site(lat, p);
+
+        ClusterSet *cs = cluster_find_all(lat);
+        if (cs == NULL) {
+            fprintf(stderr, "Failed to find clusters for L=%d.\n", L);
+            lattice_free(lat);
+            fclose(fp);
+            return 0;
+        }
+
+        cluster_sort_by_size(cs);
+
+        if (!io_save_selected_clusters_coords_csv(cluster_filename,
+                                                  lat,
+                                                  cs,
+                                                  cfg->cluster_view_mode)) {
+            fprintf(stderr,
+                    "Failed to save cluster coords for L=%d, mode=%s\n",
+                    L,
+                    cfg->cluster_view_mode);
+        }
+
+        cluster_free_all(cs);
+        lattice_free(lat);
+
+        printf("L=%d done (time=%.6f sec)\n", L, elapsed);
+
+        int next_L = (int)(L * mult);
+        if (next_L <= L) {
+            next_L = L + 1;
+        }
+        L = next_L;
+    }
+
+    fclose(fp);
     return 1;
 }

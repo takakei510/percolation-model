@@ -7,8 +7,9 @@ SRC = src/main.c src/lattice.c src/percolation.c src/cluster.c src/io.c src/conf
 all: $(TARGET)
 
 $(TARGET): $(SRC)
-	$(CC) $(CFLAGS) $(SRC) -o $(TARGET)
-
+	mkdir -p build
+	$(CC) $(CFLAGS) $(SRC) -o $(TARGET) -lm
+	
 run: $(TARGET)
 	./$(TARGET)
 

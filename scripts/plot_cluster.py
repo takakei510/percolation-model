@@ -34,7 +34,7 @@ def main():
                     group["x"],group["y"],group["z"],
                     s=4,
                     color="red",
-                    alpha=0.75,
+                    alpha=0.65,
                     label="Second cluster"
                 )                
 

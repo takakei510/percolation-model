@@ -1,9 +1,22 @@
+# build
 build/
+
+# data（生成物は全部無視）
 data/*
 !data/.gitkeep
 
+# 画像・動画（どこにあっても無視）
+*.gif
+*.mp4
+*.png
+
+# C build
 *.o
 *.out
+
+# Python
+__pycache__/
+*.pyc
 
 # editor
 .vscode/
