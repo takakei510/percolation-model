@@ -1,6 +1,6 @@
 mode=sweep
 dim=2
-L=100
+L=512
 n_trials=10
 p_start=0.10
 p_end=0.80

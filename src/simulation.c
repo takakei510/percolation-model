@@ -28,12 +28,14 @@ static void create_output_dirs(int dim)
     if (dim == 2)
     {
         mkdir("data/2d", 0777);
+        mkdir("data/2d/sweep", 0777);
         mkdir("data/2d/size_sweep_clusters", 0777);
         mkdir("data/2d/size_sweep_cluster_sizes", 0777);
     }
     else if (dim == 3)
     {
         mkdir("data/3d", 0777);
+        mkdir("data/3d/sweep", 0777);
         mkdir("data/3d/size_sweep_clusters", 0777);
         mkdir("data/3d/size_sweep_cluster_sizes", 0777);
     }
@@ -316,7 +318,18 @@ int run_sweep_simulation(const Config *cfg)
 
     int n_sites = compute_n_sites(dim, L);
 
-    remove("data/summary.csv");
+    create_output_dirs(dim);
+
+    const char *dim_dir = (dim == 2) ? "data/2d" : "data/3d";
+
+    char summary_filename[256];
+    snprintf(summary_filename,
+            sizeof(summary_filename),
+            "%s/sweep/summary_L_%d.csv",
+            dim_dir,
+            L);
+
+    remove(summary_filename);
 
     printf("mode = sweep\n");
     printf("dim = %d\n", dim);
@@ -337,16 +350,16 @@ int run_sweep_simulation(const Config *cfg)
                stats.std_largest,
                stats.std_second);
 
-        if (!io_append_summary_csv_mean("data/summary.csv",
-                                        p, dim, L, n_sites, n_trials,
-                                        stats.mean_occupied,
-                                        stats.mean_clusters,
-                                        stats.mean_largest,
-                                        stats.mean_second,
-                                        stats.std_occupied,
-                                        stats.std_clusters,
-                                        stats.std_largest,
-                                        stats.std_second))
+        io_append_summary_csv_mean(summary_filename,
+                                    p, dim, L, n_sites, n_trials,
+                                    stats.mean_occupied,
+                                    stats.mean_clusters,
+                                    stats.mean_largest,
+                                    stats.mean_second,
+                                    stats.std_occupied,
+                                    stats.std_clusters,
+                                    stats.std_largest,
+                                    stats.std_second);
         {
             fprintf(stderr, "Failed to append summary CSV at p = %.6f\n", p);
             return 0;

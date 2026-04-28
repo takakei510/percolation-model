@@ -44,9 +44,25 @@ int io_append_summary_csv_mean(const char *filename,
                                double std_largest,
                                double std_second)
 {
+    FILE *check = fopen(filename, "r");
+    int need_header = (check == NULL);
+
+    if (check != NULL)
+    {
+        fclose(check);
+    }
+
     FILE *fp = fopen(filename, "a");
     if (!fp)
         return 0;
+
+    if (need_header)
+    {
+        fprintf(fp,
+                "p,dim,L,n_sites,n_trials,"
+                "mean_occupied,mean_clusters,mean_largest,mean_second,"
+                "std_occupied,std_clusters,std_largest,std_second\n");
+    }
 
     fprintf(fp,
             "%f,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f\n",
