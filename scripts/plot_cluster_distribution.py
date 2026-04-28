@@ -14,6 +14,40 @@ def extract_L(filename):
     return int(match.group(1))
 
 
+def log_bin_sizes(sizes, n_bins=25):
+    sizes = np.asarray(sizes)
+    sizes = sizes[sizes > 0]
+
+    # 最大クラスタを除外
+    if len(sizes) > 1:
+        sizes = np.sort(sizes)[::-1][1:]
+
+    if len(sizes) == 0:
+        return np.array([]), np.array([])
+
+    s_min = sizes.min()
+    s_max = sizes.max()
+
+    if s_min == s_max:
+        return np.array([s_min]), np.array([len(sizes)])
+
+    bin_edges = np.logspace(
+        np.log10(s_min),
+        np.log10(s_max),
+        n_bins + 1
+    )
+
+    counts, edges = np.histogram(sizes, bins=bin_edges)
+
+    centers = np.sqrt(edges[:-1] * edges[1:])
+    widths = np.diff(edges)
+
+    density = counts / widths
+
+    mask = density > 0
+
+    return centers[mask], density[mask]
+
 def estimate_tau(s_values, n_values, fit_min=None, fit_max=None):
     s_values = np.asarray(s_values)
     n_values = np.asarray(n_values)
@@ -48,6 +82,9 @@ def main():
     parser.add_argument("--L", type=int, default=None)
     parser.add_argument("--fit-min", type=float, default=None)
     parser.add_argument("--fit-max", type=float, default=None)
+    parser.add_argument("--bins", type=int, default=25)
+    parser.add_argument("--raw", action="store_true",
+                        help="Plot raw distribution without log-binning")
     args = parser.parse_args()
 
     data_dir = f"data/{args.dim}d/size_sweep_cluster_sizes"
@@ -69,18 +106,23 @@ def main():
         L = extract_L(file)
         df = pd.read_csv(file)
 
-        sizes = df["size"]
-        count = sizes.value_counts().sort_index()
+        sizes = df["size"].to_numpy()
 
-        s = count.index.to_numpy()
-        n_s = count.values
+        if args.raw:
+            count = pd.Series(sizes).value_counts().sort_index()
+            s = count.index.to_numpy()
+            n_s = count.values
+            label = f"L={L} raw"
+        else:
+            s, n_s = log_bin_sizes(sizes, n_bins=args.bins)
+            label = f"L={L} log-bin"
 
         plt.loglog(
             s,
             n_s,
             marker="o",
             linestyle="none",
-            label=f"L={L}"
+            label=label
         )
 
         tau, s_fit, fit_n = estimate_tau(

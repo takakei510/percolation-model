@@ -58,9 +58,9 @@ pip install -r requirements.txt
 - matplotlib
 - pillow（アニメーション保存用）
 
-## C のビルド方法z
+## C のビルド方法
 make
-```
+
 実行ファイルは build/main に作られます。
 
 ## 実行方法
