@@ -10,6 +10,9 @@ data/*
 *.mp4
 *.png
 
+# ログファイル
+*.log
+
 # C build
 *.o
 *.out

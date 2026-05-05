@@ -299,6 +299,9 @@ int run_sweep_simulation(const Config *cfg)
 {
     int dim = cfg->dim;
     int L = cfg->L;
+
+    create_output_dirs(dim);
+
     double p_start = cfg->p_start;
     double p_end = cfg->p_end;
     double dp = cfg->dp;
@@ -350,7 +353,7 @@ int run_sweep_simulation(const Config *cfg)
                stats.std_largest,
                stats.std_second);
 
-        io_append_summary_csv_mean(summary_filename,
+        if(!io_append_summary_csv_mean(summary_filename,
                                     p, dim, L, n_sites, n_trials,
                                     stats.mean_occupied,
                                     stats.mean_clusters,
@@ -359,7 +362,7 @@ int run_sweep_simulation(const Config *cfg)
                                     stats.std_occupied,
                                     stats.std_clusters,
                                     stats.std_largest,
-                                    stats.std_second);
+                                    stats.std_second))
         {
             fprintf(stderr, "Failed to append summary CSV at p = %.6f\n", p);
             return 0;

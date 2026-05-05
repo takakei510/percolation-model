@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "io.h"
 
 int io_save_summary_csv_single(const char *filename,
@@ -10,13 +11,15 @@ int io_save_summary_csv_single(const char *filename,
 {
     FILE *fp = fopen(filename, "w");
     if (!fp)
+    {
+        perror(filename);
         return 0;
-
-    fprintf(fp, "p,n_sites,n_occupied,n_clusters,largest,second\n");
+    }
 
     int largest = (cs->n_clusters > 0) ? cs->clusters[0].size : 0;
     int second = (cs->n_clusters > 1) ? cs->clusters[1].size : 0;
 
+    fprintf(fp, "p,n_sites,n_occupied,n_clusters,largest,second\n");
     fprintf(fp, "%f,%d,%d,%d,%d,%d\n",
             p,
             lat->n_sites,
@@ -54,7 +57,10 @@ int io_append_summary_csv_mean(const char *filename,
 
     FILE *fp = fopen(filename, "a");
     if (!fp)
+    {
+        perror(filename);
         return 0;
+    }
 
     if (need_header)
     {
@@ -88,7 +94,10 @@ int io_save_cluster_sizes_csv(const char *filename, const ClusterSet *cs)
 {
     FILE *fp = fopen(filename, "w");
     if (!fp)
+    {
+        perror(filename);
         return 0;
+    }
 
     fprintf(fp, "cluster_rank,cluster_id,size\n");
 
@@ -111,7 +120,10 @@ int io_save_top_clusters_coords_csv(const char *filename,
 {
     FILE *fp = fopen(filename, "w");
     if (!fp)
+    {
+        perror(filename);
         return 0;
+    }
 
     if (lat->dim == 2)
     {
@@ -124,13 +136,13 @@ int io_save_top_clusters_coords_csv(const char *filename,
 
     for (int k = 0; k < top_k && k < cs->n_clusters; k++)
     {
-        Cluster *cluster = &cs->clusters[k];
+        const Cluster *cluster = &cs->clusters[k];
 
         for (int j = 0; j < cluster->size; j++)
         {
             int site_index = cluster->sites[j];
-
             int coord[3] = {0, 0, 0};
+
             lattice_index_to_coord(site_index, coord, lat->dim, lat->L);
 
             if (lat->dim == 2)
@@ -165,9 +177,21 @@ int io_save_selected_clusters_coords_csv(const char *filename,
     int top_k = 1;
 
     if (strcmp(view_mode, "top2") == 0)
+    {
         top_k = 2;
+    }
     else if (strcmp(view_mode, "top3") == 0)
+    {
         top_k = 3;
+    }
+    else if (strcmp(view_mode, "largest_only") == 0)
+    {
+        top_k = 1;
+    }
+    else if (strcmp(view_mode, "second_only") == 0)
+    {
+        top_k = 2;
+    }
 
     return io_save_top_clusters_coords_csv(filename, lat, cs, top_k);
 }

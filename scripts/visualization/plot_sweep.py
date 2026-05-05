@@ -104,6 +104,8 @@ def plot_largest_and_second(files, dim):
             df["largest_ratio"],
             yerr=df["std_largest_ratio"],
             fmt="o-",
+            color="tab:blue",
+            alpha=0.75,
             markersize=4,
             capsize=3,
             linewidth=1.5,
@@ -111,7 +113,8 @@ def plot_largest_and_second(files, dim):
         )
 
     ax1.set_xlabel("p")
-    ax1.set_ylabel("largest / n_sites")
+    ax1.set_ylabel("largest / n_sites", color="tab:blue")
+    ax1.tick_params(axis="y", labelcolor="tab:blue")
     ax1.grid(True)
 
     ax2 = ax1.twinx()
@@ -125,13 +128,16 @@ def plot_largest_and_second(files, dim):
             df["second_ratio"],
             yerr=df["std_second_ratio"],
             fmt="s--",
+            color="tab:orange",
+            alpha=0.9,
             markersize=4,
             capsize=3,
-            linewidth=1.2,
+            linewidth=1.5,
             label=f"Second L={L}"
         )
 
-    ax2.set_ylabel("second / n_sites")
+    ax2.set_ylabel("second / n_sites", color="tab:orange")
+    ax2.tick_params(axis="y", labelcolor="tab:orange")
 
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
@@ -140,7 +146,6 @@ def plot_largest_and_second(files, dim):
     plt.title(f"Normalized cluster sizes vs p ({dim}D)")
     plt.tight_layout()
     plt.show()
-
 
 def plot_zoom(files, dim, zoom_width):
     for csv_path in files:

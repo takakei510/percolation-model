@@ -1,0 +1,9 @@
+mode=sweep
+dim=2
+L=64
+n_trials=10
+p_start=0.10
+p_end=0.80
+dp=0.001
+save_cluster_sizes=0
+save_top_coords=0
