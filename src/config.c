@@ -11,6 +11,7 @@ int config_load(const char *filename, Config *cfg) {
     cfg->n_trials = 1;
     strncpy(cfg->cluster_view_mode, "largest_only", sizeof(cfg->cluster_view_mode) - 1);
     cfg->cluster_view_mode[sizeof(cfg->cluster_view_mode) - 1] = '\0';
+    strcpy(cfg->cluster_method, "bfs");
 
     FILE *fp = fopen(filename, "r");
     if (fp == NULL) {
@@ -35,6 +36,8 @@ int config_load(const char *filename, Config *cfg) {
             cfg->dim = atoi(value);
         } else if (strcmp(key, "L") == 0) {
             cfg->L = atoi(value);
+        }else if (strcmp(key, "cluster_method") == 0){
+            sscanf(value, "%31s", cfg->cluster_method);
         } else if (strcmp(key, "p") == 0) {
             cfg->p = atof(value);
         } else if (strcmp(key, "p_start") == 0) {

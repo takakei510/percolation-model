@@ -83,8 +83,13 @@ def main():
     parser.add_argument("--fit-min", type=float, default=None)
     parser.add_argument("--fit-max", type=float, default=None)
     parser.add_argument("--bins", type=int, default=25)
-    parser.add_argument("--raw", action="store_true",
-                        help="Plot raw distribution without log-binning")
+    parser.add_argument(
+        "--mode",
+        choices=["raw", "bin", "compare"],
+        default="bin",
+        help="raw: raw log-log, bin: log-binned, compare: raw + log-binned"
+    )
+
     args = parser.parse_args()
 
     data_dir = f"data/{args.dim}d/size_sweep_cluster_sizes"
@@ -108,40 +113,62 @@ def main():
 
         sizes = df["size"].to_numpy()
 
-        if args.raw:
+        # raw log-log plot
+        if args.mode in ["raw", "compare"]:
             count = pd.Series(sizes).value_counts().sort_index()
-            s = count.index.to_numpy()
-            n_s = count.values
-            label = f"L={L} raw"
-        else:
-            s, n_s = log_bin_sizes(sizes, n_bins=args.bins)
-            label = f"L={L} log-bin"
+            s_raw = count.index.to_numpy()
+            n_raw = count.values
 
-        plt.loglog(
-            s,
-            n_s,
-            marker="o",
-            linestyle="none",
-            label=label
+            raw_alpha = 0.65 if args.mode == "raw" else 0.25
+            raw_size = 4 if args.mode == "raw" else 3
+
+            plt.loglog(
+                s_raw,
+                n_raw,
+                marker="o",
+                linestyle="none",
+                markersize=raw_size,
+                alpha=raw_alpha,
+                label=f"L={L} raw"
+            )
+
+        # log-binned plot + tau estimation
+        if args.mode in ["bin", "compare"]:
+            s_bin, n_bin = log_bin_sizes(sizes, n_bins=args.bins)
+
+            plt.loglog(
+                s_bin,
+                n_bin,
+                marker="o",
+                linestyle="none",
+                label=f"L={L} log-bin"
+            )
+
+            tau, s_fit, fit_n = estimate_tau(
+                s_bin,
+                n_bin,
+                fit_min=args.fit_min,
+                fit_max=args.fit_max
+            )
+
+            if tau is not None:
+                print(f"L={L}: tau ≈ {tau:.3f}")
+
+                if args.L is not None:
+                    plt.loglog(
+                        s_fit,
+                        fit_n,
+                        linestyle="--",
+                        label=f"fit: tau={tau:.3f}"
+                    )
+
+    if args.fit_min is not None and args.fit_max is not None:
+        plt.axvspan(
+            args.fit_min,
+            args.fit_max,
+            alpha=0.12,
+            label="fit range"
         )
-
-        tau, s_fit, fit_n = estimate_tau(
-            s,
-            n_s,
-            fit_min=args.fit_min,
-            fit_max=args.fit_max
-        )
-
-        if tau is not None:
-            print(f"L={L}: tau ≈ {tau:.3f}")
-
-            if args.L is not None:
-                plt.loglog(
-                    s_fit,
-                    fit_n,
-                    linestyle="--",
-                    label=f"fit: tau={tau:.3f}"
-                )
 
     plt.xlabel("Cluster size s")
     plt.ylabel("Number of clusters n_s")
@@ -150,7 +177,6 @@ def main():
     plt.legend()
     plt.tight_layout()
     plt.show()
-
 
 if __name__ == "__main__":
     main()

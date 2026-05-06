@@ -1,24 +1,18 @@
 import argparse
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dim", type=int, choices=[2, 3], default=2)
-    args = parser.parse_args()
-
-    csv_path = f"data/{args.dim}d/time_vs_L.csv"
+def plot_one(csv_path, label):
     df = pd.read_csv(csv_path)
 
     print(f"Loaded: {csv_path}")
     print(df)
 
-    plt.figure(figsize=(7, 5))
-
-    plt.loglog(df["L"], df["time_sec"], marker="o", label="Measured")
+    plt.loglog(df["L"], df["time_sec"], marker="o", label=label)
 
     log_L = np.log(df["L"])
     log_T = np.log(df["time_sec"])
@@ -26,15 +20,55 @@ def main():
     slope, intercept = np.polyfit(log_L, log_T, 1)
 
     fit_T = np.exp(intercept) * df["L"] ** slope
-    plt.loglog(df["L"], fit_T, linestyle="--", label=f"slope = {slope:.3f}")
+    plt.loglog(
+        df["L"],
+        fit_T,
+        linestyle="--",
+        label=f"{label} slope={slope:.3f}"
+    )
+
+    return slope
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dim", type=int, choices=[2, 3], default=2)
+    parser.add_argument("--method", type=str, default="bfs")
+    parser.add_argument("--compare", action="store_true")
+    args = parser.parse_args()
+
+    plt.figure(figsize=(7, 5))
+
+    if args.compare:
+        methods = ["bfs", "union_find"]
+
+        for method in methods:
+            csv_path = Path(f"data/{args.dim}d/time_vs_L/{method}.csv")
+
+            if not csv_path.exists():
+                print(f"File not found: {csv_path}")
+                continue
+
+            plot_one(csv_path, method)
+
+        title = f"Computation time comparison ({args.dim}D)"
+
+    else:
+        csv_path = Path(f"data/{args.dim}d/time_vs_L/{args.method}.csv")
+
+        if not csv_path.exists():
+            print(f"File not found: {csv_path}")
+            return
+
+        plot_one(csv_path, args.method)
+        title = f"Scaling behavior ({args.dim}D, {args.method})"
 
     plt.xlabel("System size L")
     plt.ylabel("Computation time (sec)")
-    plt.title(f"Scaling behavior ({args.dim}D)")
+    plt.title(title)
     plt.grid(True, which="both")
     plt.legend()
     plt.tight_layout()
-
     plt.show()
 
 

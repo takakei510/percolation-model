@@ -6,7 +6,8 @@ typedef struct {
 
     int dim;
     int L;
-
+    char cluster_method[32];
+    
     double p;
 
     double p_start;

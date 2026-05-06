@@ -1,0 +1,11 @@
+mode=size_sweep
+dim=3
+p=0.3116
+L_start=16
+L_max=128
+L_multiplier=2
+n_trials=5
+cluster_view_mode=top2
+save_cluster_sizes=0
+save_top_coords=0
+cluster_method=union_find

@@ -1,0 +1,10 @@
+mode=sweep
+dim=3
+L=60
+n_trials=50
+p_start=0.30
+p_end=0.34
+dp=0.001
+save_cluster_sizes=0
+save_top_coords=0
+cluster_method=union_find

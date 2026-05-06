@@ -11,6 +11,8 @@ if [ -z "$MODE" ]; then
   echo "  bash scripts/run_plot.sh anim configs/xxx.txt"
   echo "  bash scripts/run_plot.sh time"
   echo "  bash scripts/run_plot.sh time3d"
+  echo "  bash scripts/run_plot.sh time_compare"
+  echo "  bash scripts/run_plot.sh time3d_compare"
   echo "  bash scripts/run_plot.sh scaling"
   echo "  bash scripts/run_plot.sh dist"
   echo "  bash scripts/run_plot.sh dist3d"
@@ -52,13 +54,31 @@ case "$MODE" in
     ;;
 
   time)
-    echo "[Plot] Time vs L"
-    python scripts/analysis/plot_time_vs_L.py --dim 2
+    METHOD=${2:-bfs}
+
+    echo "[Plot] Time vs L ($METHOD)"
+    python scripts/analysis/plot_time_vs_L.py \
+      --dim 2 \
+      --method "$METHOD"
     ;;
 
   time3d)
-    echo "[Plot] Time vs L (3D)"
-    python scripts/analysis/plot_time_vs_L.py --dim 3
+    METHOD=${2:-bfs}
+
+    echo "[Plot] Time vs L 3D ($METHOD)"
+    python scripts/analysis/plot_time_vs_L.py \
+      --dim 3 \
+      --method "$METHOD"
+    ;;
+    
+  time_compare)
+    echo "[Plot] Time comparison BFS vs Union-Find"
+    python scripts/analysis/plot_time_vs_L.py --dim 2 --compare
+    ;;
+
+  time3d_compare)
+    echo "[Plot] Time comparison BFS vs Union-Find (3D)"
+    python scripts/analysis/plot_time_vs_L.py --dim 3 --compare
     ;;
 
   scaling)
@@ -89,5 +109,5 @@ case "$MODE" in
   *)
     echo "Unknown mode: $MODE"
     echo "Usage:"
-    echo "  sweep / sweep3d / cluster / anim / time / time3d / scaling / dist / dist3d / mean / mean3d"    ;;
+    echo "  sweep / sweep3d / cluster / anim / time / time3d / time_compare / time3d_compare /scaling / dist / dist3d / mean / mean3d"    ;;
 esac

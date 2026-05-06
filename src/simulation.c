@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <time.h>
 #include <sys/stat.h>
@@ -10,6 +11,7 @@
 #include "percolation.h"
 #include "cluster.h"
 #include "io.h"
+#include "union_find.h"
 
 static int compute_n_sites(int dim, int L)
 {
@@ -29,6 +31,7 @@ static void create_output_dirs(int dim)
     {
         mkdir("data/2d", 0777);
         mkdir("data/2d/sweep", 0777);
+        mkdir("data/2d/time_vs_L", 0777);
         mkdir("data/2d/size_sweep_clusters", 0777);
         mkdir("data/2d/size_sweep_cluster_sizes", 0777);
     }
@@ -36,6 +39,7 @@ static void create_output_dirs(int dim)
     {
         mkdir("data/3d", 0777);
         mkdir("data/3d/sweep", 0777);
+        mkdir("data/3d/time_vs_L", 0777);
         mkdir("data/3d/size_sweep_clusters", 0777);
         mkdir("data/3d/size_sweep_cluster_sizes", 0777);
     }
@@ -194,6 +198,111 @@ static SweepStats compute_sweep_stats_for_p(int dim, int L, double p, int n_tria
         var_largest = 0.0;
     if (var_second < 0.0)
         var_second = 0.0;
+
+    stats.std_occupied = sqrt(var_occupied);
+    stats.std_clusters = sqrt(var_clusters);
+    stats.std_largest = sqrt(var_largest);
+    stats.std_second = sqrt(var_second);
+
+    return stats;
+}
+
+static SweepStats compute_sweep_stats_for_p_union_find(int dim, int L, double p, int n_trials)
+{
+    SweepStats stats = {0};
+
+    double sum_occupied = 0.0;
+    double sum_clusters = 0.0;
+    double sum_largest = 0.0;
+    double sum_second = 0.0;
+
+    double sum_occupied_sq = 0.0;
+    double sum_clusters_sq = 0.0;
+    double sum_largest_sq = 0.0;
+    double sum_second_sq = 0.0;
+
+    for (int trial = 0; trial < n_trials; trial++)
+    {
+        Lattice *lat = lattice_create(dim, L);
+        if (lat == NULL)
+        {
+            fprintf(stderr, "Failed to create lattice.\n");
+            return stats;
+        }
+
+        UnionFind uf;
+        uf_init(&uf, lat->n_sites);
+
+        lat->n_occupied = 0;
+
+        int neighbors[6];
+
+        for (int i = 0; i < lat->n_sites; i++)
+        {
+            double r = (double)rand() / RAND_MAX;
+
+            if (r >= p)
+            {
+                lat->occupied[i] = 0;
+                continue;
+            }
+
+            lat->occupied[i] = 1;
+            lat->n_occupied++;
+
+            uf_activate(&uf, i);
+
+            int n_neighbors = lattice_get_neighbors(lat, i, neighbors);
+
+            for (int k = 0; k < n_neighbors; k++)
+            {
+                int j = neighbors[k];
+
+                /*
+                  j < i の近傍だけを見る。
+                  こうすると、すでに処理済みの占有サイトだけをunionできる。
+                */
+                if (j < i && uf.active[j])
+                {
+                    uf_union(&uf, i, j);
+                }
+            }
+        }
+
+        int largest = 0;
+        int second = 0;
+
+        uf_get_largest_second(&uf, &largest, &second);
+
+        int n_clusters = uf.n_clusters;
+                sum_occupied += lat->n_occupied;
+                sum_clusters += n_clusters;
+                sum_largest += largest;
+                sum_second += second;
+
+                sum_occupied_sq += (double)lat->n_occupied * lat->n_occupied;
+                sum_clusters_sq += (double)n_clusters * n_clusters;
+                sum_largest_sq += (double)largest * largest;
+                sum_second_sq += (double)second * second;
+
+                uf_free(&uf);
+                lattice_free(lat);
+    }
+
+    stats.mean_occupied = sum_occupied / n_trials;
+    stats.mean_clusters = sum_clusters / n_trials;
+    stats.mean_largest = sum_largest / n_trials;
+    stats.mean_second = sum_second / n_trials;
+
+    double var_occupied = (sum_occupied_sq / n_trials) - stats.mean_occupied * stats.mean_occupied;
+    double var_clusters = (sum_clusters_sq / n_trials) - stats.mean_clusters * stats.mean_clusters;
+    double var_largest = (sum_largest_sq / n_trials) - stats.mean_largest * stats.mean_largest;
+    double var_second = (sum_second_sq / n_trials) - stats.mean_second * stats.mean_second;
+
+    if (var_occupied < 0.0) var_occupied = 0.0;
+    if (var_clusters < 0.0) var_clusters = 0.0;
+    if (var_largest < 0.0) var_largest = 0.0;
+    if (var_second < 0.0) var_second = 0.0;
 
     stats.std_occupied = sqrt(var_occupied);
     stats.std_clusters = sqrt(var_clusters);
@@ -411,8 +520,8 @@ int run_size_sweep_simulation(const Config *cfg)
     const char *dim_dir = (dim == 2) ? "data/2d" : "data/3d";
 
     char time_filename[256];
-    snprintf(time_filename, sizeof(time_filename), "%s/time_vs_L.csv", dim_dir);
-
+    snprintf(time_filename, sizeof(time_filename), "%s/time_vs_L/%s.csv", dim_dir, cfg->cluster_method);
+            
     FILE *fp = fopen(time_filename, "w");
     if (fp == NULL)
     {
@@ -437,7 +546,17 @@ int run_size_sweep_simulation(const Config *cfg)
         int n_sites = compute_n_sites(dim, L);
 
         clock_t t0 = clock();
-        SweepStats stats = compute_sweep_stats_for_p(dim, L, p, n_trials);
+        SweepStats stats;
+
+        if (strcmp(cfg->cluster_method, "union_find") == 0)
+        {
+            stats = compute_sweep_stats_for_p_union_find(dim, L, p, n_trials);
+        }
+        else
+        {
+            stats = compute_sweep_stats_for_p(dim, L, p, n_trials);
+        }
+
         clock_t t1 = clock();
 
         double elapsed = (double)(t1 - t0) / CLOCKS_PER_SEC;
