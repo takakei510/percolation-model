@@ -5,6 +5,7 @@ import re
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from pathlib import Path
 
 
 def extract_L(filename):
@@ -24,6 +25,7 @@ def load_config(path):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=str, default="data")
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--save", action="store_true")
     parser.add_argument("--show", action="store_true")
@@ -40,7 +42,7 @@ def main():
         dim = 2
         p = None
 
-    data_dir = f"data/{dim}d/size_sweep_clusters"
+    data_dir = Path(args.root) / f"{args.dim}d"/"size_sweep_clusters"
     output_dir = f"data/{dim}d/animations"
     os.makedirs(output_dir, exist_ok=True)
 

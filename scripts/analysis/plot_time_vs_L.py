@@ -32,6 +32,7 @@ def plot_one(csv_path, label):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=str, default="data")
     parser.add_argument("--dim", type=int, choices=[2, 3], default=2)
     parser.add_argument("--method", type=str, default="bfs")
     parser.add_argument("--compare", action="store_true")
@@ -43,8 +44,9 @@ def main():
         methods = ["bfs", "union_find"]
 
         for method in methods:
-            csv_path = Path(f"data/{args.dim}d/time_vs_L/{method}.csv")
-
+            base_dir = Path(args.root) / f"{args.dim}d" / "time_vs_L"
+            csv_path = base_dir / f"{method}.csv"
+            
             if not csv_path.exists():
                 print(f"File not found: {csv_path}")
                 continue
@@ -54,7 +56,8 @@ def main():
         title = f"Computation time comparison ({args.dim}D)"
 
     else:
-        csv_path = Path(f"data/{args.dim}d/time_vs_L/{args.method}.csv")
+        base_dir = Path(args.root) / f"{args.dim}d" / "time_vs_L"
+        csv_path = base_dir / f"{args.method}.csv"
 
         if not csv_path.exists():
             print(f"File not found: {csv_path}")

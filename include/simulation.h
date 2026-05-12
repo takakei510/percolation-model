@@ -20,4 +20,19 @@ int run_sweep_simulation(const Config *cfg);
 
 int run_size_sweep_simulation(const Config *cfg);
 
+int run_p_incremental_sweep_simulation(const Config *cfg);
+
+
+/* 共通関数 */
+int compute_n_sites(int dim, int L);
+
+void create_output_dirs(int dim);
+
+SweepStats compute_sweep_stats_for_p(
+    int dim,
+    int L,
+    double p,
+    int n_trials
+);
+
 #endif

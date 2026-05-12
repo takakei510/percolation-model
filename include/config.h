@@ -24,6 +24,8 @@ typedef struct {
     int save_top_coords;
 
     char cluster_view_mode[32];
+    char output[256];
+    
 } Config;
 
 int config_load(const char *filename, Config *cfg);

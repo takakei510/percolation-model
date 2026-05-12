@@ -206,12 +206,15 @@ def plot_zoom(files, dim, zoom_width):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=str, default="data")
     parser.add_argument("--dim", type=int, choices=[2, 3], default=2)
     parser.add_argument("--L", type=int, default=None)
     parser.add_argument("--zoom-width", type=float, default=0.015)
     args = parser.parse_args()
 
-    files = load_sweep_files(args.dim, args.L)
+    data_dir = Path(args.root) / f"{args.dim}d" / "sweep"
+    files = sorted(data_dir.glob("summary_L_*.csv"), key=extract_L)
+    
     if not files:
         return
 

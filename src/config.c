@@ -61,6 +61,9 @@ int config_load(const char *filename, Config *cfg) {
             cfg->L_max = atoi(value);
         } else if (strcmp(key, "L_multiplier") == 0) {
             cfg->L_multiplier = atof(value);
+        } else if (strcmp(key, "output") == 0)
+        {
+            sscanf(value, "%255s", cfg->output);
         }
     }
 

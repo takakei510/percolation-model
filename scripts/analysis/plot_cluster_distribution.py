@@ -5,7 +5,7 @@ import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
+from pathlib import Path
 
 def extract_L(filename):
     match = re.search(r"L_(\d+)", filename)
@@ -78,6 +78,7 @@ def estimate_tau(s_values, n_values, fit_min=None, fit_max=None):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=str, default="data")
     parser.add_argument("--dim", type=int, choices=[2, 3], default=2)
     parser.add_argument("--L", type=int, default=None)
     parser.add_argument("--fit-min", type=float, default=None)
@@ -92,7 +93,7 @@ def main():
 
     args = parser.parse_args()
 
-    data_dir = f"data/{args.dim}d/size_sweep_cluster_sizes"
+    data_dir = Path(args.root) / f"{args.dim}d"/"size_sweep_cluster_sizes"
 
     if args.L is None:
         files = sorted(
@@ -113,26 +114,27 @@ def main():
 
         sizes = df["size"].to_numpy()
 
+
         # raw log-log plot
         if args.mode in ["raw", "compare"]:
             count = pd.Series(sizes).value_counts().sort_index()
+
             s_raw = count.index.to_numpy()
             n_raw = count.values
-
-            raw_alpha = 0.65 if args.mode == "raw" else 0.25
-            raw_size = 4 if args.mode == "raw" else 3
 
             plt.loglog(
                 s_raw,
                 n_raw,
                 marker="o",
                 linestyle="none",
-                markersize=raw_size,
-                alpha=raw_alpha,
+                markersize=4,
+                alpha=0.75,
+                color="tab:blue",
+                zorder=3,
                 label=f"L={L} raw"
             )
 
-        # log-binned plot + tau estimation
+        # log-bin plot
         if args.mode in ["bin", "compare"]:
             s_bin, n_bin = log_bin_sizes(sizes, n_bins=args.bins)
 
@@ -140,7 +142,12 @@ def main():
                 s_bin,
                 n_bin,
                 marker="o",
-                linestyle="none",
+                linestyle="-",
+                linewidth=1.5,
+                markersize=5,
+                alpha=0.85,
+                color="tab:orange",
+                zorder=2,
                 label=f"L={L} log-bin"
             )
 
@@ -151,24 +158,27 @@ def main():
                 fit_max=args.fit_max
             )
 
+            # tau
             if tau is not None:
                 print(f"L={L}: tau ≈ {tau:.3f}")
 
-                if args.L is not None:
-                    plt.loglog(
-                        s_fit,
-                        fit_n,
-                        linestyle="--",
-                        label=f"fit: tau={tau:.3f}"
-                    )
+                plt.loglog(
+                    s_fit,
+                    fit_n,
+                    linestyle="--",
+                    linewidth=2.0,
+                    color="tab:green",
+                    zorder=1,
+                    label=f"fit: tau={tau:.3f}"
+                )
 
-    if args.fit_min is not None and args.fit_max is not None:
-        plt.axvspan(
-            args.fit_min,
-            args.fit_max,
-            alpha=0.12,
-            label="fit range"
-        )
+            if args.fit_min is not None and args.fit_max is not None:
+                plt.axvspan(
+                    args.fit_min,
+                    args.fit_max,
+                    alpha=0.12,
+                    label="fit range"
+                )
 
     plt.xlabel("Cluster size s")
     plt.ylabel("Number of clusters n_s")

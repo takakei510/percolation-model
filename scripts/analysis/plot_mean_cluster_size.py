@@ -4,6 +4,7 @@ import re
 
 import pandas as pd
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 
 def extract_L(filename):
@@ -26,10 +27,11 @@ def compute_S(sizes):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=str, default="data")
     parser.add_argument("--dim", type=int, choices=[2, 3], default=2)
     args = parser.parse_args()
 
-    data_dir = f"data/{args.dim}d/size_sweep_cluster_sizes"
+    data_dir = Path(args.root) / f"{args.dim}d"/"size_sweep_cluster_sizes"
 
     files = sorted(
         glob.glob(f"{data_dir}/cluster_sizes_L_*.csv"),

@@ -1,0 +1,13 @@
+mode=p_incremental_sweep
+dim=2
+L=512
+
+p_start=0.10
+p_end=0.80
+dp=0.01
+
+n_trials=5
+
+cluster_method=bfs
+
+output=data/2d/p_sweep_time/bfs.csv

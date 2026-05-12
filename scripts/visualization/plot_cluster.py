@@ -6,12 +6,7 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--file",
-        type=str,
-        default="data/cluster_coords.csv",
-        help="Path to cluster_coords CSV"
-    )
+    parser.add_argument("--file",type=str,default="data/cluster_coords.csv",help="Path to cluster_coords CSV")
     args = parser.parse_args()
 
     csv_path = Path(args.file)

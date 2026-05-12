@@ -72,13 +72,47 @@ case "$MODE" in
     ;;
     
   time_compare)
-    echo "[Plot] Time comparison BFS vs Union-Find"
-    python scripts/analysis/plot_time_vs_L.py --dim 2 --compare
+    ROOT=${2:-data}
+
+    echo "[Plot] Time comparison BFS vs Union-Find root=$ROOT"
+    python scripts/analysis/plot_time_vs_L.py \
+      --dim 2 \
+      --compare \
+      --root "$ROOT"
     ;;
 
   time3d_compare)
-    echo "[Plot] Time comparison BFS vs Union-Find (3D)"
-    python scripts/analysis/plot_time_vs_L.py --dim 3 --compare
+    ROOT=${2:-data}
+
+    echo "[Plot] Time comparison BFS vs Union-Find (3D) root=$ROOT"
+    python scripts/analysis/plot_time_vs_L.py \
+      --dim 3 \
+      --compare \
+      --root "$ROOT"
+    ;;
+
+  p_time)
+    P_MODE=${2:-total}
+    ROOT=${3:-data}
+
+    echo "[Plot] p sweep time 2D mode=$P_MODE root=$ROOT"
+
+    python scripts/analysis/plot_p_sweep_time.py \
+      --dim 2 \
+      --mode "$P_MODE" \
+      --root "$ROOT"
+    ;;
+
+  p_time3d)
+    P_MODE=${2:-total}
+    ROOT=${3:-data}
+
+    echo "[Plot] p sweep time 3D mode=$P_MODE root=$ROOT"
+
+    python scripts/analysis/plot_p_sweep_time.py \
+      --dim 3 \
+      --mode "$P_MODE" \
+      --root "$ROOT"
     ;;
 
   scaling)
@@ -109,5 +143,5 @@ case "$MODE" in
   *)
     echo "Unknown mode: $MODE"
     echo "Usage:"
-    echo "  sweep / sweep3d / cluster / anim / time / time3d / time_compare / time3d_compare /scaling / dist / dist3d / mean / mean3d"    ;;
+    echo "  sweep / sweep3d / cluster / anim / time / time3d / time_compare / time3d_compare / p_time / p_time3d /scaling / dist / dist3d / mean / mean3d"    ;;
 esac

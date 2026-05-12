@@ -13,7 +13,7 @@
 #include "io.h"
 #include "union_find.h"
 
-static int compute_n_sites(int dim, int L)
+int compute_n_sites(int dim, int L)
 {
     int n_sites = 1;
     for (int i = 0; i < dim; i++)
@@ -23,7 +23,7 @@ static int compute_n_sites(int dim, int L)
     return n_sites;
 }
 
-static void create_output_dirs(int dim)
+void create_output_dirs(int dim)
 {
     mkdir("data", 0777);
 
@@ -135,7 +135,7 @@ static int save_single_outputs(const Config *cfg,
     return ok;
 }
 
-static SweepStats compute_sweep_stats_for_p(int dim, int L, double p, int n_trials)
+SweepStats compute_sweep_stats_for_p(int dim, int L, double p, int n_trials)
 {
     SweepStats stats = {0};
 
@@ -435,11 +435,11 @@ int run_sweep_simulation(const Config *cfg)
     const char *dim_dir = (dim == 2) ? "data/2d" : "data/3d";
 
     char summary_filename[256];
-    snprintf(summary_filename,
-            sizeof(summary_filename),
-            "%s/sweep/summary_L_%d.csv",
-            dim_dir,
-            L);
+    if (cfg->output[0] != '\0'){
+        snprintf(summary_filename, sizeof(summary_filename), "%s", cfg->output);
+    }else{
+        snprintf(summary_filename, sizeof(summary_filename), "%s/summary.csv", dim_dir);
+    }
 
     remove(summary_filename);
 
@@ -520,8 +520,16 @@ int run_size_sweep_simulation(const Config *cfg)
     const char *dim_dir = (dim == 2) ? "data/2d" : "data/3d";
 
     char time_filename[256];
-    snprintf(time_filename, sizeof(time_filename), "%s/time_vs_L/%s.csv", dim_dir, cfg->cluster_method);
-            
+    if (cfg->output[0] != '\0'){
+        snprintf(time_filename, sizeof(time_filename), "%s", cfg->output);
+    }else{
+        snprintf(time_filename,
+                sizeof(time_filename),
+                "%s/time_vs_L/%s.csv",
+                dim_dir,
+                cfg->cluster_method);
+    }
+                
     FILE *fp = fopen(time_filename, "w");
     if (fp == NULL)
     {
