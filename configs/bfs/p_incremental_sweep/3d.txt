@@ -10,4 +10,4 @@ n_trials=5
 
 cluster_method=bfs
 
-output=data/3d/p_sweep_time/bfs.csv
+output=data/3d/p_sweep_time/bfs_fast.csv

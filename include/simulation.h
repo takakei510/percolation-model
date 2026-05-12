@@ -28,11 +28,7 @@ int compute_n_sites(int dim, int L);
 
 void create_output_dirs(int dim);
 
-SweepStats compute_sweep_stats_for_p(
-    int dim,
-    int L,
-    double p,
-    int n_trials
-);
+SweepStats compute_sweep_stats_for_p(int dim, int L, double p, int n_trials);
+SweepStats compute_sweep_stats_for_p_bfs_fast(int dim, int L, double p, int n_trials);
 
 #endif

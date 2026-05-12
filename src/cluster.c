@@ -117,6 +117,74 @@ ClusterSet *cluster_find_all(const Lattice *lat) {
     return cs;
 }
 
+void cluster_measure_bfs_fast(const Lattice *lat, int *largest, int *second, int *n_clusters){
+    
+    *largest = 0;
+    *second = 0;
+    *n_clusters = 0;
+
+    int *visited = calloc(lat->n_sites, sizeof(int));
+    int *queue = malloc(lat->n_sites * sizeof(int));
+
+    if (visited == NULL || queue == NULL)
+    {
+        free(visited);
+        free(queue);
+        return;
+    }
+
+    int neighbors[6];
+
+    for (int start = 0; start < lat->n_sites; start++)
+    {
+        if (!lat->occupied[start] || visited[start])
+        {
+            continue;
+        }
+
+        (*n_clusters)++;
+
+        int front = 0;
+        int back = 0;
+        int size = 0;
+
+        queue[back++] = start;
+        visited[start] = 1;
+
+        while (front < back)
+        {
+            int current = queue[front++];
+            size++;
+
+            int n_nb = lattice_get_neighbors(lat, current, neighbors);
+
+            for (int k = 0; k < n_nb; k++)
+            {
+                int nb = neighbors[k];
+
+                if (lat->occupied[nb] && !visited[nb])
+                {
+                    visited[nb] = 1;
+                    queue[back++] = nb;
+                }
+            }
+        }
+
+        if (size > *largest)
+        {
+            *second = *largest;
+            *largest = size;
+        }
+        else if (size > *second)
+        {
+            *second = size;
+        }
+    }
+
+    free(visited);
+    free(queue);
+}
+
 void cluster_sort_by_size(ClusterSet *cs) {
     if (cs == NULL || cs->n_clusters <= 1) {
         return;

@@ -14,11 +14,21 @@ def main():
 
     data_dir = Path(args.root) / f"{args.dim}d"/"p_sweep_time"
     
-    bfs_path = data_dir / "bfs.csv"
-    uf_path = data_dir / "union_find.csv"
+    series = []
 
-    bfs = pd.read_csv(bfs_path)
-    uf = pd.read_csv(uf_path)
+    for filename, label in [
+        ("bfs.csv", "BFS"),
+        ("bfs_fast.csv", "BFS fast"),
+        ("union_find.csv", "Union-Find"),
+    ]:
+        path = data_dir / filename
+
+        if path.exists():
+            df = pd.read_csv(path)
+            series.append((df, label))
+            print(f"Loaded: {path}")
+        else:
+            print(f"Skipped: {path}")
 
     plt.figure(figsize=(7, 5))
 
@@ -31,23 +41,15 @@ def main():
         ylabel = "Cumulative time [sec]"
         title = f"Cumulative time vs p ({args.dim}D)"
 
-    plt.plot(
-        bfs["p"],
-        bfs[y],
-        marker="o",
-        markersize=3,
-        linewidth=1.5,
-        label="BFS"
-    )
-
-    plt.plot(
-        uf["p"],
-        uf[y],
-        marker="s",
-        markersize=3,
-        linewidth=1.5,
-        label="Union-Find"
-    )
+    for df, label in series:
+        plt.plot(
+            df["p"],
+            df[y],
+            marker="o",
+            markersize=3,
+            linewidth=1.5,
+            label=label
+        )
 
     plt.xlabel("p")
     plt.ylabel(ylabel)

@@ -87,7 +87,7 @@ static int run_p_incremental_sweep_bfs(const Config *cfg)
         clock_t t0 = clock();
 
         SweepStats stats =
-            compute_sweep_stats_for_p(
+            compute_sweep_stats_for_p_bfs_fast(
                 dim,
                 L,
                 p,

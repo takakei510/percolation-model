@@ -207,6 +207,90 @@ SweepStats compute_sweep_stats_for_p(int dim, int L, double p, int n_trials)
     return stats;
 }
 
+SweepStats compute_sweep_stats_for_p_bfs_fast(int dim, int L, double p, int n_trials)
+{
+    SweepStats stats = {0};
+
+    double sum_occupied = 0.0;
+    double sum_clusters = 0.0;
+    double sum_largest = 0.0;
+    double sum_second = 0.0;
+
+    double sum_occupied_sq = 0.0;
+    double sum_clusters_sq = 0.0;
+    double sum_largest_sq = 0.0;
+    double sum_second_sq = 0.0;
+
+    for (int trial = 0; trial < n_trials; trial++)
+    {
+        Lattice *lat = lattice_create(dim, L);
+
+        if (lat == NULL)
+        {
+            fprintf(stderr, "Failed to create lattice.\n");
+            return stats;
+        }
+
+        percolation_generate_site(lat, p);
+
+        int largest = 0;
+        int second = 0;
+        int n_clusters = 0;
+
+        cluster_measure_bfs_fast(
+            lat,
+            &largest,
+            &second,
+            &n_clusters
+        );
+
+        sum_occupied += lat->n_occupied;
+        sum_clusters += n_clusters;
+        sum_largest += largest;
+        sum_second += second;
+
+        sum_occupied_sq += (double)lat->n_occupied * lat->n_occupied;
+        sum_clusters_sq += (double)n_clusters * n_clusters;
+        sum_largest_sq += (double)largest * largest;
+        sum_second_sq += (double)second * second;
+
+        lattice_free(lat);
+    }
+
+    stats.mean_occupied = sum_occupied / n_trials;
+    stats.mean_clusters = sum_clusters / n_trials;
+    stats.mean_largest = sum_largest / n_trials;
+    stats.mean_second = sum_second / n_trials;
+
+    double var_occupied =
+        (sum_occupied_sq / n_trials) -
+        stats.mean_occupied * stats.mean_occupied;
+
+    double var_clusters =
+        (sum_clusters_sq / n_trials) -
+        stats.mean_clusters * stats.mean_clusters;
+
+    double var_largest =
+        (sum_largest_sq / n_trials) -
+        stats.mean_largest * stats.mean_largest;
+
+    double var_second =
+        (sum_second_sq / n_trials) -
+        stats.mean_second * stats.mean_second;
+
+    if (var_occupied < 0.0) var_occupied = 0.0;
+    if (var_clusters < 0.0) var_clusters = 0.0;
+    if (var_largest < 0.0) var_largest = 0.0;
+    if (var_second < 0.0) var_second = 0.0;
+
+    stats.std_occupied = sqrt(var_occupied);
+    stats.std_clusters = sqrt(var_clusters);
+    stats.std_largest = sqrt(var_largest);
+    stats.std_second = sqrt(var_second);
+
+    return stats;
+}
+
 static SweepStats compute_sweep_stats_for_p_union_find(int dim, int L, double p, int n_trials)
 {
     SweepStats stats = {0};
