@@ -22,6 +22,10 @@ int run_simulation(const Config *cfg)
     {
         return run_p_incremental_sweep_simulation(cfg);
     }
+    else if (strcmp(cfg->mode, "random_walk") == 0)
+    {
+        return run_random_walk_simulation(cfg);
+    }
 
     fprintf(stderr, "Unknown mode: %s\n", cfg->mode);
 

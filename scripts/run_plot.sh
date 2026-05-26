@@ -18,6 +18,8 @@ if [ -z "$MODE" ]; then
   echo "  bash scripts/run_plot.sh dist3d"
   echo "  bash scripts/run_plot.sh mean"
   echo "  bash scripts/run_plot.sh mean3d"
+  echo "  bash scripts/run_plot.sh random_walk 2d"
+  echo "  bash scripts/run_plot.sh random_walk 3d"
   exit 1
 fi
 
@@ -140,8 +142,23 @@ case "$MODE" in
     python scripts/analysis/plot_mean_cluster_size.py --dim 3
     ;;
 
+  random_walk)
+    DIM_NAME=${2:-2d}
+    DIM=${DIM_NAME%d}
+
+    echo "[Plot] Random walk dim=$DIM_NAME"
+
+    python scripts/visualization/plot_random_walk.py \
+      --rw data/${DIM_NAME}/random_walk/rw.csv \
+      --saw data/${DIM_NAME}/random_walk/saw.csv \
+      --rw-traj data/${DIM_NAME}/random_walk/rw_traj.csv \
+      --saw-traj data/${DIM_NAME}/random_walk/saw_traj.csv \
+      --dim "$DIM" \
+      --out-prefix data/${DIM_NAME}/random_walk/compare_${DIM_NAME}
+    ;;
+
   *)
     echo "Unknown mode: $MODE"
     echo "Usage:"
-    echo "  sweep / sweep3d / cluster / anim / time / time3d / time_compare / time3d_compare / p_time / p_time3d /scaling / dist / dist3d / mean / mean3d"    ;;
+    echo "  sweep / sweep3d / cluster / anim / time / time3d / time_compare / time3d_compare / p_time / p_time3d / scaling / dist / dist3d / mean / mean3d / random_walk"
 esac

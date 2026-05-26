@@ -13,6 +13,14 @@ int config_load(const char *filename, Config *cfg) {
     cfg->cluster_view_mode[sizeof(cfg->cluster_view_mode) - 1] = '\0';
     strcpy(cfg->cluster_method, "bfs");
 
+    //ramdom_walk
+    strcpy(cfg->walk_type, "rw");
+    strcpy(cfg->start, "center");
+    strcpy(cfg->boundary, "free");
+    cfg->n_steps = 1000;
+    cfg->save_trajectory = 0;
+    cfg->save_trajectory_trials = 1;
+
     FILE *fp = fopen(filename, "r");
     if (fp == NULL) {
         fprintf(stderr, "Failed to open config file: %s\n", filename);
@@ -61,9 +69,22 @@ int config_load(const char *filename, Config *cfg) {
             cfg->L_max = atoi(value);
         } else if (strcmp(key, "L_multiplier") == 0) {
             cfg->L_multiplier = atof(value);
-        } else if (strcmp(key, "output") == 0)
-        {
+        } else if (strcmp(key, "output") == 0){
             sscanf(value, "%255s", cfg->output);
+        }else if (strcmp(key, "walk_type") == 0) {
+            sscanf(value, "%15s", cfg->walk_type);
+        } else if (strcmp(key, "n_steps") == 0) {
+            cfg->n_steps = atoi(value);
+        } else if (strcmp(key, "start") == 0) {
+            sscanf(value, "%31s", cfg->start);
+        } else if (strcmp(key, "boundary") == 0) {
+            sscanf(value, "%31s", cfg->boundary);
+        } else if (strcmp(key, "save_trajectory") == 0) {
+            cfg->save_trajectory = atoi(value);
+        } else if (strcmp(key, "save_trajectory_trials") == 0) {
+            cfg->save_trajectory_trials = atoi(value);
+        } else if (strcmp(key, "trajectory_output") == 0) {
+            sscanf(value, "%255s", cfg->trajectory_output);
         }
     }
 

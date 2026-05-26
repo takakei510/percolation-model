@@ -1,0 +1,17 @@
+mode=random_walk
+walk_type=rw
+
+dim=3
+L=64
+
+n_steps=1000
+n_trials=1000
+
+start=center
+boundary=free
+
+save_trajectory=1
+save_trajectory_trials=3
+
+output=data/3d/random_walk/rw.csv
+trajectory_output=data/3d/random_walk/rw_traj.csv

@@ -25,6 +25,15 @@ typedef struct {
 
     char cluster_view_mode[32];
     char output[256];
+
+    //random_walk
+    char walk_type[16];      // rw / saw
+    int n_steps;
+    char start[32];          // center
+    char boundary[32];       // free / periodic
+    int save_trajectory;
+    int save_trajectory_trials;
+    char trajectory_output[256];
     
 } Config;
 

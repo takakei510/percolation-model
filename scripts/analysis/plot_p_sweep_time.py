@@ -34,17 +34,23 @@ def main():
 
     if args.mode == "step":
         y = "step_time"
-        ylabel = "Step time [sec]"
+        ylabel = "Average step time per trial [sec]"
         title = f"Step time vs p ({args.dim}D)"
     else:
         y = "total_time"
-        ylabel = "Cumulative time [sec]"
+        ylabel = "Average cumulative time per trial [sec]"
         title = f"Cumulative time vs p ({args.dim}D)"
 
     for df, label in series:
+
+        if "n_trials" in df.columns:
+            plot_y = df[y] / df["n_trials"]
+        else:
+            plot_y = df[y]
+
         plt.plot(
             df["p"],
-            df[y],
+            plot_y,
             marker="o",
             markersize=3,
             linewidth=1.5,
