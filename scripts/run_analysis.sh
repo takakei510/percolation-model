@@ -9,6 +9,7 @@ if [ -z "$MODE" ]; then
   echo "  bash scripts/run_analysis.sh fit_rw 2d L512_N1000_T10000"
   echo "  bash scripts/run_analysis.sh fit_rw 3d L128_N5000_T1000"
   echo "  bash scripts/run_analysis.sh fit_survival 2d L512_N1000_T10000"
+  echo "  bash scripts/run_analysis.sh fit_lifetime 2d L512_N1000_T10000"
   exit 1
 fi
 
@@ -63,11 +64,33 @@ case "$MODE" in
       --out-prefix "${DATA_DIR}/survival"
     ;;
 
+  fit_lifetime)
+    DIM_NAME=${2:-2d}
+    CASE_DIR=$3
+
+    if [ -z "$CASE_DIR" ]; then
+      echo "Usage:"
+      echo "  bash scripts/run_analysis.sh fit_lifetime 2d L512_N1000_T10000"
+      exit 1
+    fi
+
+    DATA_DIR="data/${DIM_NAME}/random_walk/${CASE_DIR}"
+
+    echo "[Analysis] Fit lifetime distribution"
+    echo "[Data] ${DATA_DIR}"
+
+    python scripts/analysis/fit_lifetime_distribution.py \
+      --input "${DATA_DIR}/final_steps.csv" \
+      --out-prefix "${DATA_DIR}/fit_lifetime" \
+      ${MAX_STEP:+--max-step ${MAX_STEP}}
+    ;;
+
   *)
     echo "Unknown analysis mode: $MODE"
     echo "Available:"
     echo "  fit_rw"
     echo "  fit_survival"
+    echo "  fit_lifetime"
     exit 1
     ;;
 esac
