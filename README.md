@@ -1,314 +1,249 @@
-# Percolation Model
+# Percolation & Random Walk Simulation
 
-Cで実装したサイトパーコレーションシミュレーションです。  
-2次元・3次元格子上でクラスタ構造を解析し、sweep実行や可視化まで行えます。
+本リポジトリは C 言語で実装したサイトパーコレーションとランダムウォーク／自己回避ウォーク（SAW）のシミュレーション、および Python による解析・可視化をまとめた研究用コードベースです。
 
-## 実装済み機能
+## 主な特徴
 
 - 2D / 3D サイトパーコレーション
-- 連結成分（クラスタ）の抽出
-- 最大連結成分・第2連結成分の解析
-- configファイルによる実行管理
-- single / sweep / size_sweep 実行
-- n_trials による平均化
-- 標準偏差の計算
-- CSV 出力
-- Python による可視化
-- クラスタ構造のアニメーション表示（2D / 3D）
-
-
----
+- BFS / Union-Find によるクラスタ抽出
+- 最大クラスタ・第2クラスタの解析
+- sweep / size_sweep / random_walk 実行
+- CSV 出力による結果保存
+- Python でのプロットとフィッティング
+- 生存確率解析や寿命分布解析
 
 ## ディレクトリ構成
 
 ```text
 project/
-├── src/          # Cソースコード
-├── include/      # ヘッダファイル
-├── configs/      # 実行設定ファイル
-├── scripts/      # Python可視化スクリプト
-├── data/         # 出力CSV（Git管理外）
-├── build/        # 実行ファイル
+├── build/                 # コンパイル済みバイナリ
+├── configs/               # 実行設定ファイル
+│   ├── bfs/
+│   ├── union_find/
+│   └── random_walk/
+├── data/                  # 出力データ（Git 管理外）
+├── include/               # ヘッダファイル
+├── scripts/
+│   ├── analysis/          # 分析・フィッティング用 Python スクリプト
+│   ├── visualization/     # 可視化用 Python スクリプト
+│   ├── run_analysis.sh    # 分析ワークフロー用ラッパー
+│   ├── run_plot.sh        # 可視化ワークフロー用ラッパー
+│   └── test_all.sh        # テスト実行用スクリプト
+├── src/                   # C ソースコード
 ├── Makefile
 └── README.md
 ```
 
 ## 必要環境
-C
+
 - gcc
 - make
-Python
 - Python 3
+- numpy
 - pandas
 - matplotlib
-- numpy
+- pillow
 
-## Pythonライブラリ
-
-必要なライブラリは requirements.txt に記載されている。
-
-インストール：
+Python の依存は `requirements.txt` にまとめています。
 
 ```bash
 pip install -r requirements.txt
 ```
-主なライブラリ：
-- numpy
-- pandas
-- matplotlib
-- pillow（アニメーション保存用）
 
-## C のビルド方法
+## ビルド手順
+
+```bash
 make
+```
 
-実行ファイルは build/main に作られます。
+ビルド後、実行バイナリは `build/main` に生成されます。
 
-## 実行方法
-single 実行
+## シミュレーション実行
+
+C 実装のシミュレーションは設定ファイルを指定して実行します。
+
+```bash
+./build/main <config-file>
 ```
-./build/main configs/config_single.txt
+
+例:
+
+```bash
+./build/main configs/bfs/single/2d_largest.txt
+./build/main configs/bfs/sweep/2d/L512.txt
+./build/main configs/bfs/size_sweep/2d.txt
+./build/main configs/random_walk/2d/rw.txt
 ```
-sweep 実行
-```
-./build/main configs/config_sweep.txt
-```
-size_sweep 実行
-```
-./build/main configs/config_size_sweep_2d.txt
-./build/main configs/config_size_sweep_3d.txt
-```
-## config説明 
-ファイル例
-configs/config_single.txt
-```
+
+### 代表的なモード
+
+- `mode=single` : 単一の p で実行
+- `mode=sweep` : p の掃引実行
+- `mode=size_sweep` : L の掃引実行
+- `mode=p_incremental_sweep` : p を段階的に増加させる掃引
+- `mode=random_walk` : ランダムウォーク / SAW 実行
+
+## config パラメータ概要
+
+- `mode` : 実行モード
+- `dim` : 2 または 3
+- `L` : 格子サイズ
+- `p` : 占有確率
+- `p_start`, `p_end`, `dp` : `sweep` モードの p 範囲
+- `L_start`, `L_max`, `L_multiplier` : `size_sweep` の L 掃引設定
+- `n_trials` : 試行回数
+- `cluster_view_mode` : `largest_only`, `second_only`, `top2`
+- `save_cluster_sizes` : クラスタサイズ保存フラグ
+- `save_top_coords` : 上位クラスタ座標保存フラグ
+
+### random_walk 固有パラメータ
+
+- `walk_type` : `rw` または `saw`
+- `n_steps` : ステップ数
+- `boundary` : 境界条件（例: `free`）
+- `save_trajectory` : 軌跡保存の有無
+- `save_trajectory_trials` : 軌跡保存試行数
+- `output` : 結果 CSV の出力先
+- `trajectory_output` : 軌跡 CSV の出力先
+
+## 代表的な config 例
+
+### `configs/bfs/single/2d_largest.txt`
+
+```text
 mode=single
-dim=3
+p=0.59
+dim=2
 L=100
-p=0.31
 n_trials=1
-save_cluster_sizes=0
-save_top_coords=0
+save_cluster_sizes=1
+save_top_coords=1
+cluster_view_mode=largest_only
 ```
-configs/config_sweep.txt
-```
+
+### `configs/bfs/sweep/2d/L512.txt`
+
+```text
 mode=sweep
-dim=3
-L=100
+dim=2
+L=512
+n_trials=10
 p_start=0.10
 p_end=0.80
-dp=0.01
-n_trials=10
+dp=0.001
 save_cluster_sizes=0
 save_top_coords=0
 ```
-configs/config_size_sweep.txt
-```
+
+### `configs/bfs/size_sweep/2d.txt`
+
+```text
 mode=size_sweep
-dim=2
 p=0.5927
 L_start=16
-L_max=512
+L_max=2048
 L_multiplier=2
 n_trials=5
 cluster_view_mode=top2
+save_cluster_sizes=0
+save_top_coords=0
 ```
-各パラメータ
-- mode
-  - single : 1つの p で実行
-  - sweep : p を範囲で掃引
-  - size_sweep : L掃引
-- dim
-  - 格子の次元（2 または 3）
-- L
-  - 格子サイズ
-  - 総サイト数は L^dim
-- L_start: size_sweep の開始サイズ
-- L_max: size_sweep の最大サイズ
-- L_multiplier: L の増加倍率
-- p
-  - 占有確率
-- p_start, p_end, dp
-  - sweep モードでの p の開始・終了・刻み幅
-- n_trials
-  - 各 p に対する試行回数
-  - 平均値・標準偏差の計算に使用
-- cluster_view_mode
-  - クラスタ可視化の表示モード
-    - largest_only  : 最大クラスタのみ
-    - second_only   : 第2クラスタのみ
-    - top2          : 最大・第2クラスタ
-- save_cluster_sizes
-  - クラスタサイズ一覧を保存するか
-- save_top_coords
-  - 上位クラスタの座標を保存するか
 
-## 出力ファイル
+## 出力データ
 
-### summary.csv(single / sweep)
+- `data/.../rw.csv`, `data/.../saw.csv` : RW / SAW 統計データ
+- `data/.../rw_traj.csv`, `data/.../saw_traj.csv` : 軌跡データ
+- `data/.../final_steps.csv` : 最終ステップ / 寿命データ
+- `data/.../summary.csv` : single / sweep の集計結果
+- `data/.../time_vs_L.csv` : size_sweep の L 依存結果
 
-```
-data/summary.csv
-```
-single の場合:
-```
-p,dim,L,n_sites,n_occupied,n_clusters,largest_size,second_size
-```
-sweep の場合:
-```
-p,dim,L,n_sites,n_trials,mean_occupied,mean_clusters,mean_largest,mean_second,std_occupied,std_clusters,std_largest,std_second
-```
-size_sweep の場合:
-```
-data/2d/time_vs_L.csv
-data/3d/time_vs_L.csv
-```
-time_vs_L.csv は計算時間およびクラスタサイズのスケーリング解析に使用される。
+### クラスタ構造データ
 
-内容：
-```
-L,n_sites,n_trials,time_sec,mean_largest,mean_second,std_largest,std_second
-```
-クラスタ構造
-```
-data/2d/size_sweep_clusters/
-data/3d/size_sweep_clusters/
-```
-CSV形式：
+- `data/2d/size_sweep_clusters/`
+- `data/3d/size_sweep_clusters/`
 
-- 2D
-```
+2D の形式:
+
+```text
 site_index,x,y,cluster_rank
 ```
-- 3D
-```
+
+3D の形式:
+
+```text
 site_index,x,y,z,cluster_rank
 ```
----
-#### 各項目
-- `site_index` : サイトのインデックス
-- `x, y, z` : 格子状の座標
-- `cluster`: 
-  - 1 : 最大クラスタ
-  - 2 : 第2クラスタ
-#### 備考
-- データは「最大クラスタ→第2クラスタ」の順に書き込まれる
-- 可視化スクリプト(plot_cluster.py)で使用される
-(可視化については次のPython 可視化のCluster Visualizationを参照)
-## Python 可視化
 
-### 仮想環境を使う場合:
-```
-source venv/bin/activate
-```
-ライブラリインストール:
-```
-pip install -r requirements.txt
-```
-### プロット実行:
-```
-scripts/
-├── plot.py
-├── plot.cluster.py
-├── plot_time_vs_L.py
-├── plot_cluster_scaling.py
-├── animate_clusters_vs_L.py
-```
-基本プロット：
+`cluster_rank` は 1 が最大クラスタ、2 が第2クラスタを示します。
+
+## 分析・可視化スクリプト
+
+### 分析 (`scripts/analysis`)
+
+- `fit_diffusion_exponent.py` : RW / SAW の MSD を対数フィットして拡散指数を推定
+- `fit_survival.py` : 生存確率を指数関数フィット
+- `fit_lifetime_distribution.py` : `final_steps.csv` から寿命分布を解析し、幾何分布をフィット
+
+`fit_lifetime_distribution.py` は `--max-step` を指定すると、最大ステップで打ち切られた試行を右側打ち切り（right-censoring）として扱います。
+
+### 可視化 (`scripts/visualization`)
+
+- `plot_random_walk.py`
+- `plot_final_step.py`
+- `plot_cluster.py`
+- `plot_cluster_distribution.py`
+- `plot_cluster_scaling.py`
+- `plot_mean_cluster_size.py`
+- `plot_p_sweep_time.py`
+- `plot_time_vs_L.py`
+- `animate_clusters_vs_L.py`
+
+### 実行ラッパー
+
+- `bash scripts/run_analysis.sh <mode> <dim> <case>` : 分析ワークフロー
+- `bash scripts/run_plot.sh <mode> ...` : 可視化ワークフロー
+
+#### `scripts/run_analysis.sh` のモード例
+
+- `fit_rw` : RW / SAW の拡散指数フィット
+- `fit_survival` : 生存確率の指数フィット
+- `fit_lifetime` : 寿命分布のフィット
+
+#### `scripts/run_plot.sh` のモード例
+
+- `sweep`, `sweep3d`
+- `cluster`
+- `anim`
+- `time`, `time3d`, `time_compare`, `time3d_compare`
+- `p_time`, `p_time3d`
+- `scaling`
+- `dist`, `dist3d`
+- `mean`, `mean3d`
+- `random_walk`
+- `final_step`
+
+## 使用例
+
+### 分析の実行
 
 ```bash
-python scripts/plot.py
+bash scripts/run_analysis.sh fit_rw 2d L512_N1000_T10000
+bash scripts/run_analysis.sh fit_survival 2d L512_N1000_T10000
+bash scripts/run_analysis.sh fit_lifetime 2d L512_N1000_T10000
 ```
-L依存の計算時間：
-```bash
-python scripts/plot_time_vs_L.py
-```
-クラスタサイズ解析：
-```bash
-python scripts/plot_cluster_scaling.py
-```
-### グラフで見ている量
-- 最大連結成分
-- 第2連結成分
-- 正規化した最大連結成分 largest / n_sites
-- 正規化した第2連結成分 second / n_sites
-- 標準偏差（エラーバー）
 
-第2連結成分は臨界点近傍でピークを持つため、臨界点の推定に有効です。
+### 可視化の実行
 
-## Cluster Visualization
-最大クラスタ・第2クラスタの構造を2D/3Dで可視化できます。
-### 表示モード
-configファイルに`cluster_view_mode=`で以下を指定可能:
-- `largest_only`: 最大クラスタのみ表示
-- `second_only` : 第2クラスタのみ表示
-- `top2` : 最大クラスタと第2クラスタを同時表示
-例：
-cluster_view_mode=top2
-### クラスタ可視化との関係
-`cluster_coords.csv`は以下の可視化スクリプトで使用される
 ```bash
-python scripts/plot_cluster.py
+bash scripts/run_plot.sh random_walk 2d L512_N1000_T10000
+bash scripts/run_plot.sh final_step 2d L512_N1000_T10000
+bash scripts/run_plot.sh sweep
+bash scripts/run_plot.sh time
+bash scripts/run_plot.sh scaling
 ```
-#### 実行結果
-- cluster_rankに応じて色分け表示される
-- 最大クラスタ(青),第2クラスタ(赤)として描画される
-
-## size_sweep（L依存解析）
-### 計算時間プロット
-```bash
-python scripts/plot_time_vs_L.py
-```
-### クラスタサイズ解析
-```bash
-python scripts/plot_cluster_scaling.py
-```
----
-### クラスタアニメーション
-#### 実行
-```
-bash scripts/run_anim.sh configs/config_size_sweep_2d.txt
-bash scripts/run_anim.sh configs/config_size_sweep_3d.txt
-```
-#### 出力
-```
-data/2d/animations/clusters.gif
-data/3d/animations/clusters.gif
-```
-### 物理的知見
-- 系サイズ増加により最大クラスタが支配的になる
-- 第2クラスタの相対サイズは減少する
-- 有限サイズ効果を可視化できる
-
-## 現在の到達点
-- 臨界点近傍の挙動を再現
-- 第2クラスタの挙動を確認
-- スケーリング則の検証
-- 可視化・アニメーションまで実装
-
-## 今後の展望
-- 臨界点の精密推定
-- 有限サイズスケーリング解析
-- p sweepによるピーク解析
-- 3Dでの詳細検証
-- bond percolation への拡張
 
 ## 注意
-data/ は生成物のため Git 管理しません。
----
 
-## 最短実行手順
-### C 実行
-```
-make clean
-make
-./build/main configs/config_sweep.txt
-```
-### Python 可視化
-```
-source venv/bin/activate
-python scripts/plot.py
-```
-#### animateの場合
-```
-bash scripts/run_anim.sh configs/config_size_sweep_2d.txt
-```
+- `data/` 以下は生成データのため Git 管理対象外です。
+- ソース変更後は再度 `make` を実行してください。
+- Python スクリプト実行時は `requirements.txt` の依存を満たしてください。
