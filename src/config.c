@@ -72,7 +72,7 @@ int config_load(const char *filename, Config *cfg) {
         } else if (strcmp(key, "output") == 0){
             sscanf(value, "%255s", cfg->output);
         }else if (strcmp(key, "walk_type") == 0) {
-            sscanf(value, "%15s", cfg->walk_type);
+            sscanf(value, "%63s", cfg->walk_type);
         } else if (strcmp(key, "n_steps") == 0) {
             cfg->n_steps = atoi(value);
         } else if (strcmp(key, "start") == 0) {

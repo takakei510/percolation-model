@@ -6,12 +6,12 @@ dim=2
 L=512
 
 n_steps=1000
-n_trials=1000
+n_trials=10000
 
 boundary=free
 
 save_trajectory=1
 save_trajectory_trials=3
 
-output=data/2d/random_walk/saw_512_1000.csv
-trajectory_output=data/2d/random_walk/saw_traj_512_1000.csv
+output=data/2d/random_walk/L512_N1000_T10000/saw.csv
+trajectory_output=data/2d/random_walk/L512_N1000_T10000/saw_traj.csv

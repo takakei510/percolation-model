@@ -27,7 +27,7 @@ typedef struct {
     char output[256];
 
     //random_walk
-    char walk_type[16];      // rw / saw
+    char walk_type[64];      // rw / saw
     int n_steps;
     char start[32];          // center
     char boundary[32];       // free / periodic

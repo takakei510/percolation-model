@@ -5,7 +5,7 @@ dim=3
 L=64 
 
 n_steps=1000 
-n_trials=1000 
+n_trials=10000 
 
 start=center 
 boundary=free 
