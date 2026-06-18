@@ -18,11 +18,10 @@ if [ -z "$MODE" ]; then
   echo "  bash scripts/run_plot.sh dist3d"
   echo "  bash scripts/run_plot.sh mean"
   echo "  bash scripts/run_plot.sh mean3d"
-  echo "  bash scripts/run_plot.sh random_walk 2d L---_N----_T----"
-  echo "  bash scripts/run_plot.sh random_walk 3d L---_N----_T----"
-  echo "  bash scripts/run_plot.sh fit_rw 2d L---_N----_T----"
-  echo "  bash scripts/run_plot.sh final_step 2d L---_N----_T----"
-  echo "  bash scripts/run_plot.sh final_step 3d L---_N----_T----"
+  echo "  bash scripts/run_plot.sh random_walk 2d <model> L---_N----_T----"
+  echo "  bash scripts/run_plot.sh random_walk 3d <model> L---_N----_T----"
+  echo "  bash scripts/run_plot.sh final_step 2d <model> L---_N----_T----"
+  echo "  bash scripts/run_plot.sh final_step 3d <model> L---_N----_T----"
   exit 1
 fi
 
@@ -147,19 +146,24 @@ case "$MODE" in
 
   random_walk)
     DIM_NAME=${2:-2d}
-    CASE_DIR=$3
+    MODEL=$3
+    CASE_DIR=$4
     DIM=${DIM_NAME%d}
 
-    if [ -z "$CASE_DIR" ]; then
+    if [ -z "$MODEL" ] || [ -z "$CASE_DIR" ]; then
       echo "Usage:"
-      echo "  bash scripts/run_plot.sh random_walk 2d L512_N10000_T10000"
-      echo "  bash scripts/run_plot.sh random_walk 3d L128_N5000_T1000"
+      echo "  bash scripts/run_plot.sh random_walk 2d kgw L512_N10000_T10000"
+      echo "  bash scripts/run_plot.sh random_walk 2d death_on_contact L512_N1000_T10000"
       exit 1
     fi
 
-    DATA_DIR="data/${DIM_NAME}/random_walk/${CASE_DIR}"
+    DATA_DIR="data/${DIM_NAME}/random_walk/${MODEL}/${CASE_DIR}"
+    if [ ! -d "$DATA_DIR" ] && [ -d "data/${DIM_NAME}/random_walk/${CASE_DIR}" ]; then
+      DATA_DIR="data/${DIM_NAME}/random_walk/${CASE_DIR}"
+      echo "[Warning] using legacy random_walk layout: ${DATA_DIR}"
+    fi
 
-    echo "[Plot] Random walk dim=${DIM_NAME} case=${CASE_DIR}"
+    echo "[Plot] Random walk dim=${DIM_NAME} model=${MODEL} case=${CASE_DIR}"
     echo "[Data] ${DATA_DIR}"
 
     python scripts/visualization/plot_random_walk.py \
@@ -173,15 +177,20 @@ case "$MODE" in
 
   final_step)
     DIM_NAME=${2:-2d}
-    CASE_DIR=$3
+    MODEL=$3
+    CASE_DIR=$4
 
-    if [ -z "$CASE_DIR" ]; then
+    if [ -z "$MODEL" ] || [ -z "$CASE_DIR" ]; then
       echo "Usage:"
-      echo "  bash scripts/run_plot.sh final_step 2d L512_N1000_T10000"
+      echo "  bash scripts/run_plot.sh final_step 2d kgw L512_N1000_T10000"
       exit 1
     fi
 
-    DATA_DIR="data/${DIM_NAME}/random_walk/${CASE_DIR}"
+    DATA_DIR="data/${DIM_NAME}/random_walk/${MODEL}/${CASE_DIR}"
+    if [ ! -d "$DATA_DIR" ] && [ -d "data/${DIM_NAME}/random_walk/${CASE_DIR}" ]; then
+      DATA_DIR="data/${DIM_NAME}/random_walk/${CASE_DIR}"
+      echo "[Warning] using legacy final_step layout: ${DATA_DIR}"
+    fi
 
     echo "[Plot] Final step distribution"
     echo "[Data] ${DATA_DIR}"

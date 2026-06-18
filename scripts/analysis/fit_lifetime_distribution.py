@@ -35,7 +35,7 @@ def fit_geometric(final_steps, support_start):
 
 def save_distribution_csv(out_prefix, steps, counts, probabilities, p, support_start):
     geometric_fit = (1.0 - p) ** (steps - support_start) * p
-    out_csv = f"{out_prefix}_lifetime_distribution.csv"
+    out_csv = f"{out_prefix}_distribution.csv"
     pd.DataFrame({
         "final_step": steps,
         "count": counts,
@@ -46,7 +46,7 @@ def save_distribution_csv(out_prefix, steps, counts, probabilities, p, support_s
 
 
 def save_summary_csv(out_prefix, mean_lifetime, p, censored_count, censored_fraction, warning):
-    out_csv = f"{out_prefix}_lifetime_fit_summary.csv"
+    out_csv = f"{out_prefix}_fit_summary.csv"
     pd.DataFrame([{
         "mean_lifetime": mean_lifetime,
         "p": p,
