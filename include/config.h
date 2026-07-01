@@ -26,6 +26,11 @@ typedef struct {
     char cluster_view_mode[32];
     char output[256];
 
+    int seed_provided;
+    char seed_str[128];
+    int seed_offset_provided;
+    char seed_offset_str[128];
+
     //random_walk
     char walk_type[64];      // rw / saw
     int n_steps;
@@ -34,6 +39,8 @@ typedef struct {
     int save_trajectory;
     int save_trajectory_trials;
     char trajectory_output[256];
+    int save_msd_distribution;
+    char msd_distribution_steps[256];
     
 } Config;
 

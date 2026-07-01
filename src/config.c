@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,11 +8,32 @@ static void trim_newline(char *str) {
     str[strcspn(str, "\r\n")] = '\0';
 }
 
+static void trim_whitespace(char *str) {
+    char *start = str;
+    while (*start && isspace((unsigned char)*start)) {
+        start++;
+    }
+
+    char *end = start + strlen(start);
+    while (end > start && isspace((unsigned char)*(end - 1))) {
+        end--;
+    }
+
+    size_t len = end - start;
+    memmove(str, start, len);
+    str[len] = '\0';
+}
+
 int config_load(const char *filename, Config *cfg) {
     cfg->n_trials = 1;
     strncpy(cfg->cluster_view_mode, "largest_only", sizeof(cfg->cluster_view_mode) - 1);
     cfg->cluster_view_mode[sizeof(cfg->cluster_view_mode) - 1] = '\0';
     strcpy(cfg->cluster_method, "bfs");
+
+    cfg->seed_provided = 0;
+    cfg->seed_str[0] = '\0';
+    cfg->seed_offset_provided = 0;
+    cfg->seed_offset_str[0] = '\0';
 
     //ramdom_walk
     strcpy(cfg->walk_type, "rw");
@@ -20,6 +42,8 @@ int config_load(const char *filename, Config *cfg) {
     cfg->n_steps = 1000;
     cfg->save_trajectory = 0;
     cfg->save_trajectory_trials = 1;
+    cfg->save_msd_distribution = 0;
+    cfg->msd_distribution_steps[0] = '\0';
 
     FILE *fp = fopen(filename, "r");
     if (fp == NULL) {
@@ -33,9 +57,12 @@ int config_load(const char *filename, Config *cfg) {
         trim_newline(line);
 
         char key[128], value[128];
-        if (sscanf(line, "%127[^=]=%127s", key, value) != 2) {
+        if (sscanf(line, "%127[^=]=%127[^\"]", key, value) != 2) {
             continue;
         }
+
+        trim_whitespace(key);
+        trim_whitespace(value);
 
         if (strcmp(key, "mode") == 0) {
             strncpy(cfg->mode, value, sizeof(cfg->mode) - 1);
@@ -44,7 +71,15 @@ int config_load(const char *filename, Config *cfg) {
             cfg->dim = atoi(value);
         } else if (strcmp(key, "L") == 0) {
             cfg->L = atoi(value);
-        }else if (strcmp(key, "cluster_method") == 0){
+        } else if (strcmp(key, "seed") == 0) {
+            strncpy(cfg->seed_str, value, sizeof(cfg->seed_str) - 1);
+            cfg->seed_str[sizeof(cfg->seed_str) - 1] = '\0';
+            cfg->seed_provided = 1;
+        } else if (strcmp(key, "seed_offset") == 0) {
+            strncpy(cfg->seed_offset_str, value, sizeof(cfg->seed_offset_str) - 1);
+            cfg->seed_offset_str[sizeof(cfg->seed_offset_str) - 1] = '\0';
+            cfg->seed_offset_provided = 1;
+        } else if (strcmp(key, "cluster_method") == 0) {
             sscanf(value, "%31s", cfg->cluster_method);
         } else if (strcmp(key, "p") == 0) {
             cfg->p = atof(value);
@@ -69,9 +104,9 @@ int config_load(const char *filename, Config *cfg) {
             cfg->L_max = atoi(value);
         } else if (strcmp(key, "L_multiplier") == 0) {
             cfg->L_multiplier = atof(value);
-        } else if (strcmp(key, "output") == 0){
+        } else if (strcmp(key, "output") == 0) {
             sscanf(value, "%255s", cfg->output);
-        }else if (strcmp(key, "walk_type") == 0) {
+        } else if (strcmp(key, "walk_type") == 0) {
             sscanf(value, "%63s", cfg->walk_type);
         } else if (strcmp(key, "n_steps") == 0) {
             cfg->n_steps = atoi(value);
@@ -85,6 +120,10 @@ int config_load(const char *filename, Config *cfg) {
             cfg->save_trajectory_trials = atoi(value);
         } else if (strcmp(key, "trajectory_output") == 0) {
             sscanf(value, "%255s", cfg->trajectory_output);
+        } else if (strcmp(key, "save_msd_distribution") == 0) {
+            cfg->save_msd_distribution = atoi(value);
+        } else if (strcmp(key, "msd_distribution_steps") == 0) {
+            sscanf(value, "%255s", cfg->msd_distribution_steps);
         }
     }
 

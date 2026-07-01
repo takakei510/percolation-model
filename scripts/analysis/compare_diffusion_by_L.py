@@ -250,6 +250,57 @@ def plot_local_exponent(df, plot_prefix, dim_name, suffix, logx=False, ylim=None
     return out_path
 
 
+def plot_large_L_average(df, plot_prefix, dim_name, suffix, logx=False, large_L_min=1024):
+    selected = df[df["L"] >= large_L_min].copy()
+    if selected.empty:
+        raise ValueError(f"No large-L curves found for L >= {large_L_min}.")
+
+    average_series = selected.groupby("step")["local_exponent"].mean(skipna=True).dropna()
+    if average_series.empty:
+        raise ValueError(
+            f"No valid large-L local exponent values available for L >= {large_L_min}."
+        )
+
+    plt.figure(figsize=(8, 5))
+    if logx:
+        plt.semilogx(
+            average_series.index.values,
+            average_series.values,
+            marker="o",
+            linestyle="-",
+            color="tab:blue",
+            alpha=0.5,
+            linewidth=1.2,
+            label="alpha_largeL",
+        )
+    else:
+        plt.plot(
+            average_series.index.values,
+            average_series.values,
+            marker="o",
+            linestyle="-",
+            color="tab:blue",
+            alpha=0.5,
+            linewidth=1.2,
+            label="alpha_largeL",
+        )
+
+    plt.xlabel("step")
+    plt.ylabel("average local exponent")
+    title = "Average local exponent for large L"
+    plt.title(title)
+    plt.axhline(1.0, color="black", linestyle=":", label="alpha=1.0")
+    if dim_name == "2d":
+        plt.axhline(1.5, color="gray", linestyle=":", label="alpha=1.5")
+    plt.legend()
+    plt.grid(True, which="both")
+    plt.tight_layout()
+    out_path = f"{plot_prefix}_{suffix}.png"
+    plt.savefig(out_path, dpi=300)
+    plt.close()
+    return out_path
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--inputs", nargs="+", required=True)
@@ -267,6 +318,7 @@ def main():
     parser.add_argument("--alpha-ymax", type=float, default=2.2)
     parser.add_argument("--split-L", action="store_true", dest="split_L")
     parser.add_argument("--split-threshold", type=int, default=512)
+    parser.add_argument("--large-L-min", type=int, default=1024)
     parser.add_argument(
         "--highlight-L",
         nargs="+",
@@ -341,6 +393,26 @@ def main():
         highlight_L=args.highlight_L,
     )
     print(f"Saved: {zoom_logx_path}")
+
+    large_L_average_path = plot_large_L_average(
+        combined,
+        args.plot_prefix,
+        dim_name,
+        "local_exponent_largeL_average",
+        logx=False,
+        large_L_min=args.large_L_min,
+    )
+    print(f"Saved: {large_L_average_path}")
+
+    large_L_average_logx_path = plot_large_L_average(
+        combined,
+        args.plot_prefix,
+        dim_name,
+        "local_exponent_largeL_average_logx",
+        logx=True,
+        large_L_min=args.large_L_min,
+    )
+    print(f"Saved: {large_L_average_logx_path}")
 
     if args.split_L:
         small_df = combined[combined["L"] <= args.split_threshold]

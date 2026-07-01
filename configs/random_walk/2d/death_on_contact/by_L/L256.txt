@@ -1,0 +1,14 @@
+mode=random_walk
+walk_type=death_on_contact
+dim=2
+L=256
+n_steps=1000
+n_trials=10000
+boundary=free
+seed=12345
+seed_offset=L
+
+output=data/2d/random_walk/death_on_contact/L256_N1000_T10000/saw.csv
+trajectory_output=data/2d/random_walk/death_on_contact/L256_N1000_T10000/saw_traj.csv
+save_trajectory=0
+save_trajectory_trials=1

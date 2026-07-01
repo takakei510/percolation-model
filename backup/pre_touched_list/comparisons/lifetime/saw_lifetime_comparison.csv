@@ -1,0 +1,9 @@
+dim_name,dim,model,case,L,N,T,n_trials,mean_lifetime,std_lifetime,min_lifetime,max_lifetime,median_lifetime,q25_lifetime,q75_lifetime,trapped_count,boundary_dead_count,contact_dead_count,trapped_fraction,boundary_dead_fraction,contact_dead_fraction,censored_count,censored_fraction,source_file
+2d,2,saw,L64_N1000_T10000,64,1000,10000,10000,69.4344,46.67342003168126,7.0,365.0,58.0,34.0,93.0,10000,0,0,1.0,0.0,0.0,0,0.0,data/2d/random_walk/saw/L64_N1000_T10000/final_steps.csv
+2d,2,saw,L128_N1000_T10000,128,1000,10000,10000,71.4078,51.668859734530876,7.0,440.0,58.0,35.0,94.0,10000,0,0,1.0,0.0,0.0,0,0.0,data/2d/random_walk/saw/L128_N1000_T10000/final_steps.csv
+2d,2,saw,L256_N1000_T10000,256,1000,10000,10000,71.1732,51.536680187032516,7.0,397.0,58.0,34.0,95.0,10000,0,0,1.0,0.0,0.0,0,0.0,data/2d/random_walk/saw/L256_N1000_T10000/final_steps.csv
+2d,2,saw,L512_N1000_T10000,512,1000,10000,10000,71.4538,51.30702589948734,7.0,432.0,59.0,34.0,95.0,10000,0,0,1.0,0.0,0.0,0,0.0,data/2d/random_walk/saw/L512_N1000_T10000/final_steps.csv
+2d,2,saw,L1024_N1000_T10000,1024,1000,10000,10000,70.5445,50.26798888776715,7.0,450.0,58.0,34.0,93.0,10000,0,0,1.0,0.0,0.0,0,0.0,data/2d/random_walk/saw/L1024_N1000_T10000/final_steps.csv
+2d,2,saw,L2048_N1000_T10000,2048,1000,10000,10000,71.1737,50.81511532904939,7.0,414.0,59.0,34.0,95.0,10000,0,0,1.0,0.0,0.0,0,0.0,data/2d/random_walk/saw/L2048_N1000_T10000/final_steps.csv
+2d,2,saw,L4096_N1000_T10000,4096,1000,10000,10000,70.7073,51.0373344490165,7.0,471.0,58.0,34.0,93.0,10000,0,0,1.0,0.0,0.0,0,0.0,data/2d/random_walk/saw/L4096_N1000_T10000/final_steps.csv
+2d,2,saw,L8192_N1000_T10000,8192,1000,10000,10000,70.4813,49.98308194937679,7.0,420.0,58.0,34.0,93.0,10000,0,0,1.0,0.0,0.0,0,0.0,data/2d/random_walk/saw/L8192_N1000_T10000/final_steps.csv

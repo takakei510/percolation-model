@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 #include "random_walk.h"
 
@@ -32,6 +33,13 @@ static void apply_periodic(int *x, int *y, int *z, int dim, int L)
     }
 }
 
+static double now_seconds(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
+
 WalkResult run_one_walk(
     int dim,
     int L,
@@ -51,7 +59,16 @@ WalkResult run_one_walk(
     double *sum_rg2_all,
     int *n_alive,
     FILE *traj_fp,
-    int save_traj
+    int save_traj,
+    unsigned char *visited,
+    int *touched,
+    size_t touched_cap,
+    size_t *touched_count,
+    FILE *msd_fp,
+    const int *msd_steps,
+    int msd_step_count,
+    double *msd_r2_values,
+    WalkTiming *timing
 )
 {
     WalkResult result;
@@ -69,29 +86,32 @@ WalkResult run_one_walk(
     int y = y0;
     int z = z0;
 
-    int n_sites = (dim == 3) ? L * L * L : L * L;
-    unsigned char *visited = NULL;
-
     int use_visited =
         (strcmp(walk_type, "saw") == 0) ||
         (strcmp(walk_type, "death_on_contact") == 0);
 
     if (use_visited) {
-        visited = (unsigned char *)calloc(n_sites, sizeof(unsigned char));
-        if (!visited) {
-            fprintf(stderr, "Failed to allocate visited array\n");
-            result.trapped = 1;
-            return result;
+        *touched_count = 0;
+
+        int start_idx = index_3d(x, y, z, L);
+        if (!visited[start_idx]) {
+            visited[start_idx] = 1;
+            if (*touched_count >= touched_cap) {
+                fprintf(stderr, "Touched list capacity exceeded\n");
+                exit(1);
+            }
+            touched[(*touched_count)++] = start_idx;
         }
-        visited[index_3d(x, y, z, L)] = 1;
     }
 
     double sx = 0.0;
     double sy = 0.0;
     double sz = 0.0;
     double sr2 = 0.0;
+    int msd_step_index = 0;
 
     for (int step = 0; step <= n_steps; step++) {
+        double stats_start = now_seconds();
         int dx0 = x - x0;
         int dy0 = y - y0;
         int dz0 = z - z0;
@@ -139,10 +159,21 @@ WalkResult run_one_walk(
             fprintf(traj_fp, "%d,%d,%d,%d,%d\n", trial, step, x, y, z);
         }
 
+        while (msd_steps && msd_r2_values && msd_step_index < msd_step_count && step == msd_steps[msd_step_index]) {
+            msd_r2_values[msd_step_index] = r2;
+            msd_step_index++;
+        }
+
+        if (timing) {
+            timing->time_statistics += now_seconds() - stats_start;
+        }
+
         if (step == n_steps) {
             result.final_step = step;
             break;
         }
+
+        double walk_start = now_seconds();
 
         int dirs[6][3] = {
             { 1, 0, 0}, {-1, 0, 0},
@@ -198,6 +229,10 @@ WalkResult run_one_walk(
                 sum_rg2_all[t] += rg2;
             }
 
+            if (timing) {
+                timing->time_walk += now_seconds() - walk_start;
+            }
+
             break;
         }
 
@@ -215,6 +250,11 @@ WalkResult run_one_walk(
                     result.trapped = 1;
                     result.boundary_dead = 1;
                     result.final_step = step;
+
+                    if (timing) {
+                        timing->time_walk += now_seconds() - walk_start;
+                    }
+
                     break;
                 }
             }
@@ -224,6 +264,11 @@ WalkResult run_one_walk(
                 result.trapped = 1;
                 result.contact_dead = 1;
                 result.final_step = step;
+
+                if (timing) {
+                    timing->time_walk += now_seconds() - walk_start;
+                }
+
                 break;
             }
         }
@@ -233,12 +278,53 @@ WalkResult run_one_walk(
         z = nz;
 
         if (use_visited) {
-            visited[index_3d(x, y, z, L)] = 1;
+            int idx = index_3d(x, y, z, L);
+            if (!visited[idx]) {
+                visited[idx] = 1;
+                if (*touched_count >= touched_cap) {
+                    fprintf(stderr, "Touched list capacity exceeded\n");
+                    exit(1);
+                }
+                touched[(*touched_count)++] = idx;
+            }
         }
 
         result.final_step = step + 1;
+
+        if (timing) {
+            timing->time_walk += now_seconds() - walk_start;
+        }
     }
 
-    free(visited);
+    double reset_start = now_seconds();
+    if (use_visited) {
+        for (size_t i = 0; i < *touched_count; i++) {
+            visited[touched[i]] = 0;
+        }
+        *touched_count = 0;
+    }
+    if (timing) {
+        timing->time_reset += now_seconds() - reset_start;
+    }
+
+    if (msd_fp && msd_steps && msd_r2_values) {
+        for (int i = 0; i < msd_step_count; i++) {
+            if (msd_steps[i] > result.final_step) {
+                break;
+            }
+            fprintf(
+                msd_fp,
+                "%d,%d,%.10f,%d,%d,%d,%d\n",
+                trial,
+                msd_steps[i],
+                msd_r2_values[i],
+                1,
+                result.trapped,
+                result.boundary_dead,
+                result.contact_dead
+            );
+        }
+    }
+
     return result;
 }

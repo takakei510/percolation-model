@@ -1,0 +1,9 @@
+dim_name,dim,case,L,N,T,model,mean_lifetime,std_lifetime,max_lifetime,p,mean_geometric,censored_count,censored_fraction,source_file
+2d,2,L64_N1000_T10000,64,1000,10000,death_on_contact,3.6352,,,0.275088028169014,,0,0.0,data/2d/random_walk/death_on_contact/L64_N1000_T10000/fit_lifetime_fit_summary.csv
+2d,2,L128_N1000_T10000,128,1000,10000,death_on_contact,3.6073,,,0.2772156460510631,,0,0.0,data/2d/random_walk/death_on_contact/L128_N1000_T10000/fit_lifetime_fit_summary.csv
+2d,2,L256_N1000_T10000,256,1000,10000,death_on_contact,3.5429,,,0.2822546501453611,,0,0.0,data/2d/random_walk/death_on_contact/L256_N1000_T10000/fit_lifetime_fit_summary.csv
+2d,2,L512_N1000_T10000,512,1000,10000,death_on_contact,3.5945,,,0.2782028098483795,,0,0.0,data/2d/random_walk/death_on_contact/L512_N1000_T10000/fit_lifetime_fit_summary.csv
+2d,2,L1024_N1000_T10000,1024,1000,10000,death_on_contact,3.6145,,,0.2766634389265459,,0,0.0,data/2d/random_walk/death_on_contact/L1024_N1000_T10000/fit_lifetime_fit_summary.csv
+2d,2,L2048_N1000_T10000,2048,1000,10000,death_on_contact,3.5752,,,0.2797046319087043,,0,0.0,data/2d/random_walk/death_on_contact/L2048_N1000_T10000/fit_lifetime_fit_summary.csv
+2d,2,L4096_N1000_T10000,4096,1000,10000,death_on_contact,3.6047,,,0.2774155963048242,,0,0.0,data/2d/random_walk/death_on_contact/L4096_N1000_T10000/fit_lifetime_fit_summary.csv
+2d,2,L8192_N1000_T10000,8192,1000,10000,death_on_contact,3.5473,,,0.2819045471203451,,0,0.0,data/2d/random_walk/death_on_contact/L8192_N1000_T10000/fit_lifetime_fit_summary.csv

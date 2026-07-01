@@ -14,6 +14,13 @@ typedef struct {
     int boundary_dead;
 } WalkResult;
 
+typedef struct {
+    double time_initialize;
+    double time_walk;
+    double time_statistics;
+    double time_reset;
+} WalkTiming;
+
 WalkResult run_one_walk(
     int dim,
     int L,
@@ -33,7 +40,16 @@ WalkResult run_one_walk(
     double *sum_rg2_all,
     int *n_alive,
     FILE *traj_fp,
-    int save_traj
+    int save_traj,
+    unsigned char *visited,
+    int *touched,
+    size_t touched_cap,
+    size_t *touched_count,
+    FILE *msd_fp,
+    const int *msd_steps,
+    int msd_step_count,
+    double *msd_r2_values,
+    WalkTiming *timing
 );
 
 #endif

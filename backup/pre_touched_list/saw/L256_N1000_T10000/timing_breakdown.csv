@@ -1,0 +1,2 @@
+L,n_trials,time_initialize,time_walk,time_statistics,time_reset,total_time
+256,10000,0.0062348029,0.0671866254,0.0229619441,0.0003654438,0.0967488162
