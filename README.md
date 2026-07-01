@@ -7,10 +7,11 @@
 - 2D / 3D サイトパーコレーション
 - BFS / Union-Find によるクラスタ抽出
 - 最大クラスタ・第2クラスタの解析
-- sweep / size_sweep / random_walk 実行
+- sweep / size_sweep / p_incremental_sweep / random_walk 実行
 - CSV 出力による結果保存
 - Python でのプロットとフィッティング
 - 生存確率解析や寿命分布解析
+- Mean Square Displacement (MSD) 分析
 
 ## ディレクトリ構成
 
@@ -48,6 +49,34 @@ Python の依存は `requirements.txt` にまとめています。
 
 ```bash
 pip install -r requirements.txt
+```
+
+## クイックスタート
+
+### 1. ビルド
+
+```bash
+make clean && make
+```
+
+### 2. 単一実行でテスト
+
+```bash
+# 2D パーコレーション（単一 p 値）
+./build/main configs/bfs/single/2d_largest.txt
+
+# 2D ランダムウォーク
+./build/main configs/random_walk/2d/rw.txt
+```
+
+### 3. 結果を確認
+
+```bash
+# 出力データの確認
+ls data/
+
+# 可視化
+python scripts/visualization/plot_cluster.py data/.../summary.csv
 ```
 
 ## ビルド手順
@@ -95,6 +124,7 @@ C 実装のシミュレーションは設定ファイルを指定して実行し
 - `cluster_view_mode` : `largest_only`, `second_only`, `top2`
 - `save_cluster_sizes` : クラスタサイズ保存フラグ
 - `save_top_coords` : 上位クラスタ座標保存フラグ
+- `save_msd_distribution` : MSD 分布保存フラグ（random_walk モード）
 
 ### random_walk 固有パラメータ
 
@@ -186,6 +216,8 @@ site_index,x,y,z,cluster_rank
 
 `fit_lifetime_distribution.py` は `--max-step` を指定すると、最大ステップで打ち切られた試行を右側打ち切り（right-censoring）として扱います。
 
+- `analyze_msd_distribution.py` : MSD 分布の詳細分析（中央値、四分位数、パーセンタイル）
+
 ### 可視化 (`scripts/visualization`)
 
 - `plot_random_walk.py`
@@ -197,6 +229,58 @@ site_index,x,y,z,cluster_rank
 - `plot_p_sweep_time.py`
 - `plot_time_vs_L.py`
 - `animate_clusters_vs_L.py`
+
+## ワークフロー実行（高度な使い方）
+
+### シミュレーション → 分析 → 可視化
+
+シミュレーションから可視化まで一連のワークフローは、ラッパースクリプトで実行できます。
+
+```bash
+# 全テストを実行
+bash scripts/test_all.sh
+
+# 分析ワークフロー
+bash scripts/run_analysis.sh analyze_msd_distribution 2d saw data/2d/animations/msd_distribution.csv
+
+# 可視化ワークフロー
+bash scripts/run_plot.sh plot_random_walk data/2d/random_walk/rw.csv
+```
+
+## 高度な機能
+
+### MSD 分布分析
+
+Random walk シミュレーション時に `save_msd_distribution=1` を config で設定すると、各試行の Mean Square Displacement (MSD) 分布が `msd_distribution.csv` に保存されます。
+
+```text
+# config example
+mode=random_walk
+walk_type=rw
+dim=2
+n_steps=1000
+n_trials=100
+save_msd_distribution=1
+```
+
+出力ファイル構造:
+```text
+step,msd_trial_1,msd_trial_2,...,msd_trial_n
+0,0.0,0.0,...,0.0
+1,1.23,0.85,...,1.45
+...
+```
+
+分析スクリプトで詳細統計を抽出:
+
+```bash
+python scripts/analysis/analyze_msd_distribution.py 2d saw data/2d/random_walk/msd_distribution.csv
+```
+
+出力:
+- MSD 時間発展の中央値、四分位数
+- 拡散指数の推定値
+- 異常拡散の判定
 
 ### 実行ラッパー
 
