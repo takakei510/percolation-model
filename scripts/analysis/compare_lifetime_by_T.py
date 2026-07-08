@@ -70,12 +70,9 @@ def load_input(path, model_override=None):
         raise ValueError(f"Input CSV {path} contains invalid final_step values")
 
     n_trials = int(len(final_step))
-    mean_lifetime = float(final_step.mean())
-    std_lifetime = float(final_step.std())
-    median_lifetime = float(final_step.median())
     q90_lifetime = float(final_step.quantile(0.90))
     q99_lifetime = float(final_step.quantile(0.99))
-    max_lifetime = float(final_step.max())
+    mean_lifetime = float(final_step.mean())
 
     trapped_series = _to_numeric_series(df, "trapped")
     boundary_dead_series = _to_numeric_series(df, "boundary_dead")
@@ -97,12 +94,9 @@ def load_input(path, model_override=None):
         "N": metadata["N"],
         "T": metadata["T"],
         "n_trials": n_trials,
-        "mean_lifetime": mean_lifetime,
-        "std_lifetime": std_lifetime,
-        "median_lifetime": median_lifetime,
         "q90_lifetime": q90_lifetime,
         "q99_lifetime": q99_lifetime,
-        "max_lifetime": max_lifetime,
+        "mean_lifetime": mean_lifetime,
         "trapped_count": trapped_count,
         "boundary_dead_count": boundary_dead_count,
         "contact_dead_count": contact_dead_count,
@@ -126,28 +120,10 @@ def build_summary_dataframe(input_paths, model_override=None):
 
     combined = combined.sort_values(by="T")
     columns = [
-        "dim_name",
-        "dim",
-        "model",
-        "case",
-        "L",
-        "N",
         "T",
-        "n_trials",
-        "mean_lifetime",
-        "std_lifetime",
-        "median_lifetime",
         "q90_lifetime",
         "q99_lifetime",
-        "max_lifetime",
-        "trapped_count",
-        "boundary_dead_count",
-        "contact_dead_count",
-        "trapped_fraction",
-        "boundary_dead_fraction",
-        "contact_dead_fraction",
-        "censored_count",
-        "censored_fraction",
+        "mean_lifetime",
     ]
     return combined.reindex(columns=columns)
 
@@ -182,7 +158,7 @@ def plot_vs_T(df, y_key, plot_prefix, logx=False):
     return out_path
 
 
-def plot_q90_q99_max(df, plot_prefix):
+def plot_q90_q99_mean(df, plot_prefix):
     plot_df = df.copy()
     plot_df["T"] = plot_df["T"].astype(float)
     plot_df = plot_df.sort_values(by="T")
@@ -191,17 +167,17 @@ def plot_q90_q99_max(df, plot_prefix):
     plt.figure(figsize=(8, 5))
     plt.plot(x, plot_df["q90_lifetime"].astype(float).values, marker="o", linestyle="-", label="q90_lifetime")
     plt.plot(x, plot_df["q99_lifetime"].astype(float).values, marker="o", linestyle="-", label="q99_lifetime")
-    plt.plot(x, plot_df["max_lifetime"].astype(float).values, marker="o", linestyle="-", label="max_lifetime")
+    plt.plot(x, plot_df["mean_lifetime"].astype(float).values, marker="o", linestyle="-", label="mean_lifetime")
     ax = plt.gca()
     ax.set_xscale("log")
     ax.xaxis.set_major_locator(LogLocator(base=10))
     plt.xlabel(r"Time $T$")
     plt.ylabel("lifetime")
-    plt.title("Lifetime upper tail vs Time $T$")
+    plt.title("Lifetime statistics vs Time T")
     plt.grid(True, which="both")
     plt.legend()
     plt.tight_layout()
-    out_path = f"{plot_prefix}_q90_q99_max_vs_T.png"
+    out_path = f"{plot_prefix}_q90_q99_mean_vs_T.png"
     plt.savefig(out_path, dpi=300)
     plt.close()
     return out_path
@@ -227,9 +203,8 @@ def main():
 
     plot_paths = []
     plot_paths.append(plot_vs_T(summary, "mean_lifetime", args.plot_prefix, logx=False))
-    plot_paths.append(plot_vs_T(summary, "max_lifetime", args.plot_prefix, logx=False))
-    plot_paths.append(plot_q90_q99_max(summary, args.plot_prefix))
-    plot_paths.append(plot_vs_T(summary, "max_lifetime", args.plot_prefix, logx=True))
+    plot_paths.append(plot_vs_T(summary, "mean_lifetime", args.plot_prefix, logx=True))
+    plot_paths.append(plot_q90_q99_mean(summary, args.plot_prefix))
 
     for path in plot_paths:
         print(f"Saved: {path}")

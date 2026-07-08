@@ -1,0 +1,2 @@
+n_trials,mean_lifetime,std_lifetime,median_lifetime,q90_lifetime,q99_lifetime,max_lifetime,trapped_fraction,boundary_dead_fraction,contact_dead_fraction
+10000,70.4813,49.980582732797345,58.0,136.0,243.0,420,1.0,0.0,0.0

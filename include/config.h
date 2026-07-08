@@ -41,6 +41,13 @@ typedef struct {
     char trajectory_output[256];
     int save_msd_distribution;
     char msd_distribution_steps[256];
+    int *msd_distribution_step_values;
+    int msd_distribution_step_count;
+
+    int save_lifetime_checkpoints;
+    char lifetime_checkpoint_trials[256];
+    int *lifetime_checkpoint_trial_values;
+    int lifetime_checkpoint_trial_count;
     
 } Config;
 

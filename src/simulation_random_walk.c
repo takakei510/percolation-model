@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <ctype.h>
 #include <string.h>
 #include <math.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
 
 #include "config.h"
@@ -29,113 +31,95 @@ static void build_sibling_path(char *dst, size_t dst_size, const char *src, cons
     }
 }
 
-static void trim_whitespace_inplace(char *str)
+static int ensure_parent_dir(const char *path)
 {
-    char *start = str;
-    while (*start && isspace((unsigned char)*start)) {
-        start++;
+    char buffer[512];
+
+    if (strlen(path) >= sizeof(buffer)) {
+        return 0;
     }
 
-    char *end = start + strlen(start);
-    while (end > start && isspace((unsigned char)*(end - 1))) {
-        end--;
-    }
-
-    size_t len = (size_t)(end - start);
-    memmove(str, start, len);
-    str[len] = '\0';
-}
-
-static int compare_ints(const void *a, const void *b)
-{
-    int lhs = *(const int *)a;
-    int rhs = *(const int *)b;
-    if (lhs < rhs) return -1;
-    if (lhs > rhs) return 1;
-    return 0;
-}
-
-static int parse_msd_distribution_steps(const Config *cfg, int **steps_out, int *count_out)
-{
-    *steps_out = NULL;
-    *count_out = 0;
-
-    if (!cfg->save_msd_distribution) {
+    strcpy(buffer, path);
+    char *slash = strrchr(buffer, '/');
+    if (!slash) {
         return 1;
     }
+    *slash = '\0';
 
-    if (cfg->msd_distribution_steps[0] == '\0') {
-        fprintf(stderr, "save_msd_distribution=1 requires msd_distribution_steps\n");
-        return 0;
-    }
-
-    char buffer[256];
-    strncpy(buffer, cfg->msd_distribution_steps, sizeof(buffer) - 1);
-    buffer[sizeof(buffer) - 1] = '\0';
-
-    int capacity = 8;
-    int count = 0;
-    int *steps = malloc((size_t)capacity * sizeof(int));
-    if (!steps) {
-        fprintf(stderr, "Failed to allocate MSD step list\n");
-        return 0;
-    }
-
-    char *token = strtok(buffer, ",");
-    while (token) {
-        trim_whitespace_inplace(token);
-        if (*token == '\0') {
-            free(steps);
-            fprintf(stderr, "Empty value found in msd_distribution_steps\n");
-            return 0;
-        }
-
-        char *endptr = NULL;
-        long value = strtol(token, &endptr, 10);
-        if (endptr == token || *endptr != '\0') {
-            free(steps);
-            fprintf(stderr, "Invalid step in msd_distribution_steps: %s\n", token);
-            return 0;
-        }
-        if (value < 0 || value > cfg->n_steps) {
-            free(steps);
-            fprintf(stderr, "msd_distribution step out of range: %ld\n", value);
-            return 0;
-        }
-
-        if (count == capacity) {
-            capacity *= 2;
-            int *resized = realloc(steps, (size_t)capacity * sizeof(int));
-            if (!resized) {
-                free(steps);
-                fprintf(stderr, "Failed to grow MSD step list\n");
+    for (char *p = buffer + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            if (mkdir(buffer, 0777) != 0 && errno != EEXIST) {
                 return 0;
             }
-            steps = resized;
+            *p = '/';
         }
-
-        steps[count++] = (int)value;
-        token = strtok(NULL, ",");
     }
 
-    if (count == 0) {
-        free(steps);
-        fprintf(stderr, "No msd_distribution_steps were parsed\n");
+    if (mkdir(buffer, 0777) != 0 && errno != EEXIST) {
         return 0;
     }
 
-    qsort(steps, (size_t)count, sizeof(int), compare_ints);
+    return 1;
+}
 
-    int unique_count = 1;
-    for (int i = 1; i < count; i++) {
-        if (steps[i] != steps[unique_count - 1]) {
-            steps[unique_count++] = steps[i];
+static int copy_file(const char *src_path, const char *dst_path)
+{
+    FILE *src = fopen(src_path, "rb");
+    if (!src) {
+        return 0;
+    }
+
+    if (!ensure_parent_dir(dst_path)) {
+        fclose(src);
+        return 0;
+    }
+
+    FILE *dst = fopen(dst_path, "wb");
+    if (!dst) {
+        fclose(src);
+        return 0;
+    }
+
+    char buffer[8192];
+    size_t nread;
+    while ((nread = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+        if (fwrite(buffer, 1, nread, dst) != nread) {
+            fclose(src);
+            fclose(dst);
+            return 0;
         }
     }
 
-    *steps_out = steps;
-    *count_out = unique_count;
+    fclose(src);
+    if (fclose(dst) != 0) {
+        return 0;
+    }
+
     return 1;
+}
+
+static int save_lifetime_checkpoint(const char *final_path, int checkpoint_trial)
+{
+    char checkpoint_base[512];
+    char checkpoint_path[512];
+
+    if (strlen(final_path) >= sizeof(checkpoint_base)) {
+        return 0;
+    }
+
+    strcpy(checkpoint_base, final_path);
+    char *slash = strrchr(checkpoint_base, '/');
+    if (!slash) {
+        return 0;
+    }
+    *slash = '\0';
+
+    if (snprintf(checkpoint_path, sizeof(checkpoint_path), "%s/checkpoints/T%d/final_steps.csv", checkpoint_base, checkpoint_trial) >= (int)sizeof(checkpoint_path)) {
+        return 0;
+    }
+
+    return copy_file(final_path, checkpoint_path);
 }
 
 int run_random_walk_simulation(const Config *cfg)
@@ -169,17 +153,8 @@ int run_random_walk_simulation(const Config *cfg)
         total_timing.time_initialize += now_seconds() - traj_init_start;
     }
 
-    int *msd_steps = NULL;
-    int msd_step_count = 0;
     FILE *msd_fp = NULL;
     double *msd_r2_values = NULL;
-
-    if (!parse_msd_distribution_steps(cfg, &msd_steps, &msd_step_count)) {
-        fclose(out);
-        if (traj) fclose(traj);
-        free(msd_steps);
-        return 0;
-    }
 
     if (cfg->save_msd_distribution) {
         char msd_path[512];
@@ -189,17 +164,15 @@ int run_random_walk_simulation(const Config *cfg)
             fprintf(stderr, "Failed to open MSD distribution file: %s\n", msd_path);
             fclose(out);
             if (traj) fclose(traj);
-            free(msd_steps);
             return 0;
         }
         fprintf(msd_fp, "trial,step,r2,alive,trapped,boundary_dead,contact_dead\n");
-        msd_r2_values = calloc((size_t)msd_step_count, sizeof(double));
+        msd_r2_values = calloc((size_t)cfg->msd_distribution_step_count, sizeof(double));
         if (!msd_r2_values) {
             fprintf(stderr, "Failed to allocate MSD distribution buffer\n");
             fclose(out);
             if (traj) fclose(traj);
             fclose(msd_fp);
-            free(msd_steps);
             return 0;
         }
     }
@@ -219,6 +192,8 @@ int run_random_walk_simulation(const Config *cfg)
     }
 
     fprintf(final_fp, "trial,final_step,trapped,contact_dead,boundary_dead\n");
+
+    int checkpoint_index = 0;
 
     FILE *timing_fp = fopen(timing_path, "w");
     if (!timing_fp) {
@@ -338,8 +313,8 @@ int run_random_walk_simulation(const Config *cfg)
             touched_cap,
             &touched_count,
             msd_fp,
-            msd_steps,
-            msd_step_count,
+            cfg->msd_distribution_step_values,
+            cfg->msd_distribution_step_count,
             msd_r2_values,
             &total_timing
         );
@@ -356,6 +331,43 @@ int run_random_walk_simulation(const Config *cfg)
 
         if (res.trapped) {
             trapped_count++;
+        }
+
+        if (cfg->save_lifetime_checkpoints) {
+            while (checkpoint_index < cfg->lifetime_checkpoint_trial_count) {
+                int checkpoint_trial = cfg->lifetime_checkpoint_trial_values[checkpoint_index];
+                if (checkpoint_trial > cfg->n_trials) {
+                    checkpoint_index++;
+                    continue;
+                }
+                if (trial + 1 != checkpoint_trial) {
+                    break;
+                }
+
+                if (fflush(final_fp) != 0 || !save_lifetime_checkpoint(final_path, checkpoint_trial)) {
+                    fprintf(stderr, "Failed to save lifetime checkpoint for T%d\n", checkpoint_trial);
+                    fclose(out);
+                    if (traj) fclose(traj);
+                    fclose(final_fp);
+                    fclose(timing_fp);
+                    if (msd_fp) fclose(msd_fp);
+                    free(sum_r2);
+                    free(sum_r);
+                    free(sum_r2_sq);
+                    free(sum_r_sq);
+                    free(sum_rg2);
+                    free(sum_rg2_sq);
+                    free(min_r2);
+                    free(max_r2);
+                    free(n_alive);
+                    free(visited);
+                    free(touched);
+                    free(msd_r2_values);
+                    return 0;
+                }
+
+                checkpoint_index++;
+            }
         }
 
     }
@@ -455,7 +467,6 @@ int run_random_walk_simulation(const Config *cfg)
     free(n_alive);
     free(visited);
     free(touched);
-    free(msd_steps);
     free(msd_r2_values);
  
     printf("Random walk simulation completed.\n");

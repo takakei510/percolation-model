@@ -121,6 +121,8 @@ if [ -z "$MODE" ]; then
   echo "  bash scripts/run_analysis.sh compare_lifetime_by_T 2d saw <input1> [input2 ...]"
   echo "  bash scripts/run_analysis.sh compare_lifetime_by_N 2d saw <input1> [input2 ...] (deprecated alias)"
   echo "  bash scripts/run_analysis.sh analyze_msd_distribution 2d saw <msd_distribution.csv>"
+  echo "  bash scripts/run_analysis.sh analyze_lifetime_distribution 2d saw <final_steps.csv>"
+  echo "  bash scripts/run_analysis.sh compare_msd_alpha_by_T 2d saw <input1> [input2 ...] --fit-start <int> --fit-end <int> [--export <dir>]"
   exit 1
 fi
 
@@ -390,6 +392,85 @@ case "$MODE" in
     export_pngs "$EXPORT_SPEC" "${FIRST_CASE_TAG}" $(collect_pngs_with_prefix "$PLOT_PREFIX")
     ;;
 
+  compare_msd_alpha_by_T)
+    DIM_NAME=${2:-2d}
+    MODEL=$3
+    shift 3
+    split_export_option "$@"
+
+    FIT_START=""
+    FIT_END=""
+    INPUTS=()
+
+    for arg in "${PARSED_ARGS[@]}"; do
+      case "$arg" in
+        --fit-start=*)
+          FIT_START="${arg#--fit-start=}"
+          ;;
+        --fit-start)
+          EXPECT_FIT_START_VALUE=1
+          ;;
+        --fit-end=*)
+          FIT_END="${arg#--fit-end=}"
+          ;;
+        --fit-end)
+          EXPECT_FIT_END_VALUE=1
+          ;;
+        *)
+          if [ "${EXPECT_FIT_START_VALUE:-0}" -eq 1 ]; then
+            FIT_START="$arg"
+            EXPECT_FIT_START_VALUE=0
+          elif [ "${EXPECT_FIT_END_VALUE:-0}" -eq 1 ]; then
+            FIT_END="$arg"
+            EXPECT_FIT_END_VALUE=0
+          else
+            INPUTS+=("$arg")
+          fi
+          ;;
+      esac
+    done
+
+    if [ "${EXPECT_FIT_START_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --fit-start"
+      exit 1
+    fi
+
+    if [ "${EXPECT_FIT_END_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --fit-end"
+      exit 1
+    fi
+
+    if [ -z "$MODEL" ] || [ ${#INPUTS[@]} -eq 0 ] || [ -z "$FIT_START" ] || [ -z "$FIT_END" ]; then
+      echo "Usage:"
+      echo "  bash scripts/run_analysis.sh compare_msd_alpha_by_T 2d saw <input1> [input2 ...] --fit-start <int> --fit-end <int> [--export <dir>]"
+      exit 1
+    fi
+
+    OUTPUT_DIR="data/${DIM_NAME}/random_walk/comparisons/msd"
+    mkdir -p "${OUTPUT_DIR}"
+
+    OUTPUT_CSV="${OUTPUT_DIR}/${MODEL}_msd_alpha_by_T.csv"
+    PLOT_PREFIX="${OUTPUT_DIR}/${MODEL}_msd_alpha_by_T"
+
+    echo "[Analysis] Compare MSD alpha across T"
+    echo "[Output dir] ${OUTPUT_DIR}"
+    echo "[Model] ${MODEL}"
+    echo "[Fit range] ${FIT_START}..${FIT_END}"
+    echo "[Inputs] ${INPUTS[*]}"
+
+    FIRST_CASE_TAG=$(basename "$(dirname "${INPUTS[0]}")")
+
+    "${PYTHON_BIN}" scripts/analysis/compare_msd_alpha_by_T.py \
+      --inputs "${INPUTS[@]}" \
+      --fit-start "$FIT_START" \
+      --fit-end "$FIT_END" \
+      --output-csv "${OUTPUT_CSV}" \
+      --plot-prefix "${PLOT_PREFIX}" \
+      --model "${MODEL}"
+
+    export_pngs "$EXPORT_SPEC" "$FIRST_CASE_TAG" $(collect_pngs_with_prefix "$PLOT_PREFIX")
+    ;;
+
   compare_lifetime_by_N)
     echo "[Deprecated] compare_lifetime_by_N is an alias for compare_lifetime_by_T"
     exec "$0" compare_lifetime_by_T "${@:2}"
@@ -400,21 +481,52 @@ case "$MODE" in
     MODEL=$3
     shift 3
     split_export_option "$@"
-    if [ ${#PARSED_ARGS[@]} -ne 1 ]; then
-      echo "Usage:"
-      echo "  bash scripts/run_analysis.sh analyze_msd_distribution 2d saw <msd_distribution.csv> [--export <dir>]"
+    INPUT=""
+    BIN_WIDTH=0
+    EXPECT_BIN_WIDTH_VALUE=0
+
+    for arg in "${PARSED_ARGS[@]}"; do
+      if [ "$EXPECT_BIN_WIDTH_VALUE" -eq 1 ]; then
+        BIN_WIDTH="$arg"
+        EXPECT_BIN_WIDTH_VALUE=0
+        continue
+      fi
+
+      case "$arg" in
+        --bin-width=*)
+          BIN_WIDTH="${arg#--bin-width=}"
+          ;;
+        --bin-width)
+          EXPECT_BIN_WIDTH_VALUE=1
+          ;;
+        *)
+          if [ -z "$INPUT" ]; then
+            INPUT="$arg"
+          else
+            echo "Unexpected extra argument: $arg"
+            exit 1
+          fi
+          ;;
+      esac
+    done
+
+    if [ "$EXPECT_BIN_WIDTH_VALUE" -eq 1 ]; then
+      echo "Missing value for --bin-width"
+            echo "  compare_msd_alpha_by_T"
       exit 1
     fi
-    INPUT="${PARSED_ARGS[0]}"
 
     if [ -z "$MODEL" ] || [ -z "$INPUT" ]; then
       echo "Usage:"
-      echo "  bash scripts/run_analysis.sh analyze_msd_distribution 2d saw <msd_distribution.csv> [--export <dir>]"
+      echo "  bash scripts/run_analysis.sh analyze_msd_distribution 2d saw <msd_distribution.csv> [--bin-width <int>] [--export <dir>]"
       exit 1
     fi
 
     OUTPUT_DIR=$(dirname "$INPUT")
     BASE_NAME=$(basename "$INPUT" .csv)
+    if [ "$BIN_WIDTH" -gt 0 ] 2>/dev/null; then
+      BASE_NAME="${BASE_NAME}_binned_w${BIN_WIDTH}"
+    fi
     OUTPUT_CSV="${OUTPUT_DIR}/${BASE_NAME}_summary.csv"
     PLOT_PREFIX="${OUTPUT_DIR}/${BASE_NAME}"
 
@@ -425,11 +537,56 @@ case "$MODE" in
 
     CASE_TAG=$(basename "$(dirname "$INPUT")")
 
-    "${PYTHON_BIN}" scripts/analysis/analyze_msd_distribution.py \
-      --input "$INPUT" \
-      --output-csv "$OUTPUT_CSV" \
-      --plot-prefix "$PLOT_PREFIX"
+    if [ "$BIN_WIDTH" -gt 0 ] 2>/dev/null; then
+      "${PYTHON_BIN}" scripts/analysis/analyze_msd_distribution.py \
+        --input "$INPUT" \
+        --output-csv "$OUTPUT_CSV" \
+        --plot-prefix "$PLOT_PREFIX" \
+        --bin-width "$BIN_WIDTH"
+    else
+      "${PYTHON_BIN}" scripts/analysis/analyze_msd_distribution.py \
+        --input "$INPUT" \
+        --output-csv "$OUTPUT_CSV" \
+        --plot-prefix "$PLOT_PREFIX"
+    fi
 
+    export_pngs "$EXPORT_SPEC" "$CASE_TAG" $(collect_pngs_with_prefix "$PLOT_PREFIX")
+    ;;
+
+  analyze_lifetime_distribution)
+    DIM_NAME=${2:-2d}
+    MODEL=$3
+    INPUT=$4
+
+    shift 4
+    split_export_option "$@"
+
+    if [ ${#PARSED_ARGS[@]} -gt 0 ]; then
+      echo "Unexpected extra argument: ${PARSED_ARGS[*]}"
+      exit 1
+    fi
+
+    if [ -z "$MODEL" ] || [ -z "$INPUT" ]; then
+      echo "Usage:"
+      echo "  bash scripts/run_analysis.sh analyze_lifetime_distribution 2d saw <final_steps.csv> [--export <dir>]"
+      exit 1
+    fi
+
+    OUTPUT_DIR=$(dirname "$INPUT")
+    PLOT_PREFIX="${OUTPUT_DIR}/${MODEL}_lifetime"
+
+    echo "[Analysis] Lifetime distribution summary"
+    echo "[Output dir] ${OUTPUT_DIR}"
+    echo "[Model] ${MODEL}"
+    echo "[Input] ${INPUT}"
+
+    "${PYTHON_BIN}" scripts/analysis/analyze_lifetime_distribution.py \
+      --input "$INPUT" \
+      --output-dir "$OUTPUT_DIR" \
+      --plot-prefix "$PLOT_PREFIX" \
+      --model "$MODEL"
+
+    CASE_TAG=$(basename "$(dirname "$INPUT")")
     export_pngs "$EXPORT_SPEC" "$CASE_TAG" $(collect_pngs_with_prefix "$PLOT_PREFIX")
     ;;
 
@@ -444,7 +601,9 @@ case "$MODE" in
     echo "  compare_lifetime_by_L"
     echo "  compare_lifetime_by_T"
     echo "  compare_lifetime_by_N (deprecated alias)"
+    echo "  compare_msd_alpha_by_T"
     echo "  analyze_msd_distribution"
+    echo "  analyze_lifetime_distribution"
     exit 1
     ;;
 esac
