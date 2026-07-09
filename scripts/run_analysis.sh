@@ -69,6 +69,25 @@ collect_pngs_with_prefix() {
   printf '%s\n' "${files[@]}"
 }
 
+extract_case_metadata() {
+  local input_path="$1"
+  local case_tag
+  case_tag=$(basename "$(dirname "$input_path")")
+  CASE_TAG="$case_tag"
+
+  if [[ "$case_tag" =~ ^L([0-9]+)_N([0-9]+)_T([0-9]+) ]]; then
+    CASE_L="${BASH_REMATCH[1]}"
+    CASE_N="${BASH_REMATCH[2]}"
+    CASE_T="${BASH_REMATCH[3]}"
+    return 0
+  fi
+
+  CASE_L=""
+  CASE_N=""
+  CASE_T=""
+  return 1
+}
+
 export_pngs() {
   local export_spec="$1"
   local copy_tag="$2"
@@ -123,6 +142,9 @@ if [ -z "$MODE" ]; then
   echo "  bash scripts/run_analysis.sh analyze_msd_distribution 2d saw <msd_distribution.csv>"
   echo "  bash scripts/run_analysis.sh analyze_lifetime_distribution 2d saw <final_steps.csv>"
   echo "  bash scripts/run_analysis.sh compare_msd_alpha_by_T 2d saw <input1> [input2 ...] --fit-start <int> --fit-end <int> [--export <dir>]"
+  echo "  bash scripts/run_analysis.sh scan_fit_alpha 2d saw <saw.csv> [--fit-ranges <start:end,...> | --fit-starts <list> --fit-ends <list>] [--min-alive-threshold <int>] [--export <dir>]"
+  echo "  bash scripts/run_analysis.sh compare_msd_alpha_by_L 2d saw <input1> [input2 ...] --fit-start <int> --fit-end <int> [--export <dir>]"
+  echo "  bash scripts/run_analysis.sh compare_fit_alpha_by_T 2d saw <input1> [input2 ...] --fit-start <int> --fit-end <int> [--export <dir>]"
   exit 1
 fi
 
@@ -471,6 +493,316 @@ case "$MODE" in
     export_pngs "$EXPORT_SPEC" "$FIRST_CASE_TAG" $(collect_pngs_with_prefix "$PLOT_PREFIX")
     ;;
 
+  scan_fit_alpha)
+    DIM_NAME=${2:-2d}
+    MODEL=$3
+    shift 3
+    split_export_option "$@"
+
+    FIT_RANGES=""
+    FIT_STARTS=""
+    FIT_ENDS=""
+    MIN_ALIVE_THRESHOLD=""
+    INPUT=""
+
+    for arg in "${PARSED_ARGS[@]}"; do
+      case "$arg" in
+        --fit-ranges=*)
+          FIT_RANGES="${arg#--fit-ranges=}"
+          ;;
+        --fit-ranges)
+          EXPECT_FIT_RANGES_VALUE=1
+          ;;
+        --fit-starts=*)
+          FIT_STARTS="${arg#--fit-starts=}"
+          ;;
+        --fit-starts)
+          EXPECT_FIT_STARTS_VALUE=1
+          ;;
+        --fit-ends=*)
+          FIT_ENDS="${arg#--fit-ends=}"
+          ;;
+        --fit-ends)
+          EXPECT_FIT_ENDS_VALUE=1
+          ;;
+        --min-alive-threshold=*)
+          MIN_ALIVE_THRESHOLD="${arg#--min-alive-threshold=}"
+          ;;
+        --min-alive-threshold)
+          EXPECT_MIN_ALIVE_THRESHOLD_VALUE=1
+          ;;
+        *)
+          if [ "${EXPECT_FIT_RANGES_VALUE:-0}" -eq 1 ]; then
+            FIT_RANGES="$arg"
+            EXPECT_FIT_RANGES_VALUE=0
+          elif [ "${EXPECT_FIT_STARTS_VALUE:-0}" -eq 1 ]; then
+            FIT_STARTS="$arg"
+            EXPECT_FIT_STARTS_VALUE=0
+          elif [ "${EXPECT_FIT_ENDS_VALUE:-0}" -eq 1 ]; then
+            FIT_ENDS="$arg"
+            EXPECT_FIT_ENDS_VALUE=0
+          elif [ "${EXPECT_MIN_ALIVE_THRESHOLD_VALUE:-0}" -eq 1 ]; then
+            MIN_ALIVE_THRESHOLD="$arg"
+            EXPECT_MIN_ALIVE_THRESHOLD_VALUE=0
+          elif [ -z "$INPUT" ]; then
+            INPUT="$arg"
+          else
+            echo "Unexpected extra argument: $arg"
+            exit 1
+          fi
+          ;;
+      esac
+    done
+
+    if [ "${EXPECT_FIT_RANGES_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --fit-ranges"
+      exit 1
+    fi
+
+    if [ "${EXPECT_FIT_STARTS_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --fit-starts"
+      exit 1
+    fi
+
+    if [ "${EXPECT_FIT_ENDS_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --fit-ends"
+      exit 1
+    fi
+
+    if [ "${EXPECT_MIN_ALIVE_THRESHOLD_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --min-alive-threshold"
+      exit 1
+    fi
+
+    if [ -z "$MODEL" ] || [ -z "$INPUT" ]; then
+      echo "Usage:"
+      echo "  bash scripts/run_analysis.sh scan_fit_alpha 2d saw <saw.csv> [--fit-ranges <start:end,...> | --fit-starts <list> --fit-ends <list>] [--min-alive-threshold <int>] [--export <dir>]"
+      exit 1
+    fi
+
+    if ! extract_case_metadata "$INPUT"; then
+      echo "Could not infer L/N/T from input path: $INPUT"
+      exit 1
+    fi
+
+    OUTPUT_DIR="data/${DIM_NAME}/random_walk/comparisons/fit_scan"
+    mkdir -p "${OUTPUT_DIR}"
+
+    OUTPUT_CSV="${OUTPUT_DIR}/fit_scan.csv"
+    PLOT_PREFIX="${OUTPUT_DIR}/fit_scan"
+
+    echo "[Analysis] Scan MSD alpha across fit ranges"
+    echo "[Output dir] ${OUTPUT_DIR}"
+    echo "[Model] ${MODEL}"
+    echo "[Case] ${CASE_TAG} (L=${CASE_L}, N=${CASE_N}, T=${CASE_T})"
+    if [ -n "$FIT_RANGES" ]; then
+      echo "[Fit ranges] ${FIT_RANGES}"
+    else
+      echo "[Fit starts] ${FIT_STARTS:-default}"
+      echo "[Fit ends] ${FIT_ENDS:-default}"
+    fi
+    if [ -n "$MIN_ALIVE_THRESHOLD" ]; then
+      echo "[Min alive threshold] ${MIN_ALIVE_THRESHOLD}"
+    fi
+    echo "[Input] ${INPUT}"
+
+    FIRST_CASE_TAG=$(basename "$(dirname "${INPUT}")")
+
+    PYTHON_ARGS=(
+      --input "${INPUT}"
+      --output-csv "${OUTPUT_CSV}"
+      --plot-prefix "${PLOT_PREFIX}"
+      --walk-type "${MODEL}"
+      --dimension "${DIM_NAME}"
+      --L "${CASE_L}"
+      --n-trials "${CASE_N}"
+    )
+
+    if [ -n "$FIT_RANGES" ]; then
+      PYTHON_ARGS+=(--fit-ranges "$FIT_RANGES")
+    elif [ -n "$FIT_STARTS" ] || [ -n "$FIT_ENDS" ]; then
+      if [ -z "$FIT_STARTS" ] || [ -z "$FIT_ENDS" ]; then
+        echo "Both --fit-starts and --fit-ends are required when --fit-ranges is not used"
+        exit 1
+      fi
+      PYTHON_ARGS+=(--fit-starts "$FIT_STARTS" --fit-ends "$FIT_ENDS")
+    fi
+
+    if [ -n "$MIN_ALIVE_THRESHOLD" ]; then
+      PYTHON_ARGS+=(--min-alive-threshold "$MIN_ALIVE_THRESHOLD")
+    fi
+
+    "${PYTHON_BIN}" scripts/analysis/scan_fit_alpha.py "${PYTHON_ARGS[@]}"
+
+    export_pngs "$EXPORT_SPEC" "$FIRST_CASE_TAG" $(collect_pngs_with_prefix "$PLOT_PREFIX")
+    ;;
+
+  compare_msd_alpha_by_L)
+    DIM_NAME=${2:-2d}
+    MODEL=$3
+    shift 3
+    split_export_option "$@"
+
+    FIT_START=""
+    FIT_END=""
+    INPUTS=()
+
+    for arg in "${PARSED_ARGS[@]}"; do
+      case "$arg" in
+        --fit-start=*)
+          FIT_START="${arg#--fit-start=}"
+          ;;
+        --fit-start)
+          EXPECT_FIT_START_VALUE=1
+          ;;
+        --fit-end=*)
+          FIT_END="${arg#--fit-end=}"
+          ;;
+        --fit-end)
+          EXPECT_FIT_END_VALUE=1
+          ;;
+        *)
+          if [ "${EXPECT_FIT_START_VALUE:-0}" -eq 1 ]; then
+            FIT_START="$arg"
+            EXPECT_FIT_START_VALUE=0
+          elif [ "${EXPECT_FIT_END_VALUE:-0}" -eq 1 ]; then
+            FIT_END="$arg"
+            EXPECT_FIT_END_VALUE=0
+          else
+            INPUTS+=("$arg")
+          fi
+          ;;
+      esac
+    done
+
+    if [ "${EXPECT_FIT_START_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --fit-start"
+      exit 1
+    fi
+
+    if [ "${EXPECT_FIT_END_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --fit-end"
+      exit 1
+    fi
+
+    if [ -z "$MODEL" ] || [ ${#INPUTS[@]} -eq 0 ] || [ -z "$FIT_START" ] || [ -z "$FIT_END" ]; then
+      echo "Usage:"
+      echo "  bash scripts/run_analysis.sh compare_msd_alpha_by_L 2d saw <input1> [input2 ...] --fit-start <int> --fit-end <int> [--export <dir>]"
+      exit 1
+    fi
+
+    OUTPUT_DIR="data/${DIM_NAME}/random_walk/comparisons/msd"
+    mkdir -p "${OUTPUT_DIR}"
+
+    OUTPUT_CSV="${OUTPUT_DIR}/fit_vs_L.csv"
+
+    echo "[Analysis] Compare MSD alpha across L"
+    echo "[Output dir] ${OUTPUT_DIR}"
+    echo "[Model] ${MODEL}"
+    echo "[Fit range] ${FIT_START}..${FIT_END}"
+    echo "[Inputs] ${INPUTS[*]}"
+
+    FIRST_CASE_TAG=$(basename "$(dirname "${INPUTS[0]}")")
+
+    "${PYTHON_BIN}" scripts/analysis/compare_msd_alpha_by_L.py \
+      --inputs "${INPUTS[@]}" \
+      --output-csv "${OUTPUT_CSV}" \
+      --output-dir "${OUTPUT_DIR}" \
+      --fit-start "$FIT_START" \
+      --fit-end "$FIT_END" \
+      --walk-type "${MODEL}" \
+      --dimension "${DIM_NAME}"
+
+    export_pngs "$EXPORT_SPEC" "$FIRST_CASE_TAG" \
+      "${OUTPUT_DIR}/alpha_vs_L.png" \
+      "${OUTPUT_DIR}/alpha_vs_log2L.png" \
+      "${OUTPUT_DIR}/r2_vs_L.png" \
+      "${OUTPUT_DIR}/n_alive_min_vs_L.png"
+    ;;
+
+  compare_fit_alpha_by_T)
+    DIM_NAME=${2:-2d}
+    MODEL=$3
+    shift 3
+    split_export_option "$@"
+
+    FIT_START=""
+    FIT_END=""
+    INPUTS=()
+
+    for arg in "${PARSED_ARGS[@]}"; do
+      case "$arg" in
+        --fit-start=*)
+          FIT_START="${arg#--fit-start=}"
+          ;;
+        --fit-start)
+          EXPECT_FIT_START_VALUE=1
+          ;;
+        --fit-end=*)
+          FIT_END="${arg#--fit-end=}"
+          ;;
+        --fit-end)
+          EXPECT_FIT_END_VALUE=1
+          ;;
+        *)
+          if [ "${EXPECT_FIT_START_VALUE:-0}" -eq 1 ]; then
+            FIT_START="$arg"
+            EXPECT_FIT_START_VALUE=0
+          elif [ "${EXPECT_FIT_END_VALUE:-0}" -eq 1 ]; then
+            FIT_END="$arg"
+            EXPECT_FIT_END_VALUE=0
+          else
+            INPUTS+=("$arg")
+          fi
+          ;;
+      esac
+    done
+
+    if [ "${EXPECT_FIT_START_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --fit-start"
+      exit 1
+    fi
+
+    if [ "${EXPECT_FIT_END_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --fit-end"
+      exit 1
+    fi
+
+    if [ -z "$MODEL" ] || [ ${#INPUTS[@]} -eq 0 ] || [ -z "$FIT_START" ] || [ -z "$FIT_END" ]; then
+      echo "Usage:"
+      echo "  bash scripts/run_analysis.sh compare_fit_alpha_by_T 2d saw <input1> [input2 ...] --fit-start <int> --fit-end <int> [--export <dir>]"
+      exit 1
+    fi
+
+    OUTPUT_DIR="data/${DIM_NAME}/random_walk/comparisons/msd"
+    mkdir -p "${OUTPUT_DIR}"
+
+    OUTPUT_CSV="${OUTPUT_DIR}/fit_vs_T.csv"
+
+    echo "[Analysis] Compare fit alpha across T"
+    echo "[Output dir] ${OUTPUT_DIR}"
+    echo "[Model] ${MODEL}"
+    echo "[Fit range] ${FIT_START}..${FIT_END}"
+    echo "[Inputs] ${INPUTS[*]}"
+
+    FIRST_CASE_TAG=$(basename "$(dirname "${INPUTS[0]}")")
+
+    "${PYTHON_BIN}" scripts/analysis/compare_fit_alpha_by_T.py \
+      --inputs "${INPUTS[@]}" \
+      --output-csv "${OUTPUT_CSV}" \
+      --output-dir "${OUTPUT_DIR}" \
+      --fit-start "$FIT_START" \
+      --fit-end "$FIT_END" \
+      --walk-type "${MODEL}" \
+      --dimension "${DIM_NAME}"
+
+    export_pngs "$EXPORT_SPEC" "$FIRST_CASE_TAG" \
+      "${OUTPUT_DIR}/alpha_vs_T.png" \
+      "${OUTPUT_DIR}/alpha_vs_log10T.png" \
+      "${OUTPUT_DIR}/r2_vs_T.png" \
+      "${OUTPUT_DIR}/n_alive_min_vs_T.png"
+    ;;
+
   compare_lifetime_by_N)
     echo "[Deprecated] compare_lifetime_by_N is an alias for compare_lifetime_by_T"
     exec "$0" compare_lifetime_by_T "${@:2}"
@@ -602,6 +934,9 @@ case "$MODE" in
     echo "  compare_lifetime_by_T"
     echo "  compare_lifetime_by_N (deprecated alias)"
     echo "  compare_msd_alpha_by_T"
+    echo "  compare_msd_alpha_by_L"
+    echo "  compare_fit_alpha_by_T"
+    echo "  scan_fit_alpha"
     echo "  analyze_msd_distribution"
     echo "  analyze_lifetime_distribution"
     exit 1
