@@ -7,6 +7,7 @@ on:
       - "scripts/dev/apply_tour_checkpoint_refactor.py"
       - "scripts/dev/repair_tour_checkpoint_refactor.py"
       - ".github/workflows/apply-tour-checkpoint-refactor.yml"
+      - "requirements.txt"
   workflow_dispatch:
 
 permissions:
@@ -23,6 +24,17 @@ jobs:
         with:
           ref: feature/perm
           fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
 
       - name: Repair guarded refactor script
         run: python scripts/dev/repair_tour_checkpoint_refactor.py
