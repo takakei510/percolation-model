@@ -1,0 +1,34 @@
+# ==========================================================
+# Random Walk (SAW)
+# Infinite lattice + Hash backend
+# Reservoir sampling
+# T = 1e9
+# ==========================================================
+
+mode=random_walk
+walk_type=saw
+
+# Lattice
+dim=2
+boundary=infinite
+spatial_backend=hash
+
+# Simulation
+n_steps=1500
+n_trials=1000000000
+
+seed=12345
+sampling_seed=987654321
+
+# Output
+save_trajectory=0
+save_msd_distribution=1
+
+# MSD sampling
+msd_sample_mode=reservoir
+msd_reservoir_size=20000
+
+# Histogram checkpoints
+msd_distribution_steps=10,20,50,100,150,200,250,300,350,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500
+
+output=./data/2d/random_walk/saw/N1500_T1000000000_infinite_reservoir/saw.csv

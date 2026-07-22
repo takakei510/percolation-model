@@ -328,6 +328,8 @@ int config_load(const char *filename, Config *cfg) {
     strncpy(cfg->cluster_view_mode, "largest_only", sizeof(cfg->cluster_view_mode) - 1);
     cfg->cluster_view_mode[sizeof(cfg->cluster_view_mode) - 1] = '\0';
     strcpy(cfg->cluster_method, "bfs");
+    cfg->L = -1;
+    cfg->L_provided = 0;
 
     cfg->seed_provided = 0;
     cfg->seed_str[0] = '\0';
@@ -338,10 +340,18 @@ int config_load(const char *filename, Config *cfg) {
     strcpy(cfg->walk_type, "rw");
     strcpy(cfg->start, "center");
     strcpy(cfg->boundary, "free");
+    strcpy(cfg->spatial_backend, "dense");
+    cfg->hash_max_load_factor = 0.70;
     cfg->n_steps = 1000;
     cfg->save_trajectory = 0;
     cfg->save_trajectory_trials = 1;
     cfg->save_msd_distribution = 0;
+    cfg->msd_sample_mode[0] = '\0';
+    cfg->msd_reservoir_size = 20000;
+    cfg->sampling_seed_provided = 0;
+    cfg->sampling_seed_str[0] = '\0';
+    cfg->resolved_sampling_seed = 0ULL;
+    cfg->resolved_sampling_seed_set = 0;
     cfg->save_lifetime_checkpoints = 0;
     cfg->msd_distribution_steps[0] = '\0';
     cfg->msd_distribution_step_values = NULL;
@@ -376,6 +386,7 @@ int config_load(const char *filename, Config *cfg) {
             cfg->dim = atoi(value);
         } else if (strcmp(key, "L") == 0) {
             cfg->L = atoi(value);
+            cfg->L_provided = 1;
         } else if (strcmp(key, "seed") == 0) {
             strncpy(cfg->seed_str, value, sizeof(cfg->seed_str) - 1);
             cfg->seed_str[sizeof(cfg->seed_str) - 1] = '\0';
@@ -419,6 +430,10 @@ int config_load(const char *filename, Config *cfg) {
             sscanf(value, "%31s", cfg->start);
         } else if (strcmp(key, "boundary") == 0) {
             sscanf(value, "%31s", cfg->boundary);
+        } else if (strcmp(key, "spatial_backend") == 0) {
+            sscanf(value, "%31s", cfg->spatial_backend);
+        } else if (strcmp(key, "hash_max_load_factor") == 0) {
+            cfg->hash_max_load_factor = atof(value);
         } else if (strcmp(key, "save_trajectory") == 0) {
             cfg->save_trajectory = atoi(value);
         } else if (strcmp(key, "save_trajectory_trials") == 0) {
@@ -427,6 +442,14 @@ int config_load(const char *filename, Config *cfg) {
             sscanf(value, "%255s", cfg->trajectory_output);
         } else if (strcmp(key, "save_msd_distribution") == 0) {
             cfg->save_msd_distribution = atoi(value);
+        } else if (strcmp(key, "msd_sample_mode") == 0) {
+            sscanf(value, "%31s", cfg->msd_sample_mode);
+        } else if (strcmp(key, "msd_reservoir_size") == 0) {
+            cfg->msd_reservoir_size = atoi(value);
+        } else if (strcmp(key, "sampling_seed") == 0) {
+            strncpy(cfg->sampling_seed_str, value, sizeof(cfg->sampling_seed_str) - 1);
+            cfg->sampling_seed_str[sizeof(cfg->sampling_seed_str) - 1] = '\0';
+            cfg->sampling_seed_provided = 1;
         } else if (strcmp(key, "msd_distribution_steps") == 0) {
             sscanf(value, "%255s", cfg->msd_distribution_steps);
         } else if (strcmp(key, "save_lifetime_checkpoints") == 0) {
@@ -437,6 +460,76 @@ int config_load(const char *filename, Config *cfg) {
     }
 
     fclose(fp);
+
+    if (strcmp(cfg->spatial_backend, "dense") != 0 && strcmp(cfg->spatial_backend, "hash") != 0) {
+        fprintf(stderr, "Invalid spatial_backend: %s\n", cfg->spatial_backend);
+        free_msd_distribution_steps(cfg);
+        free_lifetime_checkpoint_trials(cfg);
+        return 0;
+    }
+
+    if (strcmp(cfg->boundary, "free") != 0 && strcmp(cfg->boundary, "periodic") != 0 && strcmp(cfg->boundary, "infinite") != 0) {
+        fprintf(stderr, "Invalid boundary: %s\n", cfg->boundary);
+        free_msd_distribution_steps(cfg);
+        free_lifetime_checkpoint_trials(cfg);
+        return 0;
+    }
+
+    if (strcmp(cfg->spatial_backend, "dense") == 0 && strcmp(cfg->boundary, "infinite") == 0) {
+        fprintf(stderr, "boundary=infinite is only supported with spatial_backend=hash\n");
+        free_msd_distribution_steps(cfg);
+        free_lifetime_checkpoint_trials(cfg);
+        return 0;
+    }
+
+    if (strcmp(cfg->spatial_backend, "hash") == 0 && strcmp(cfg->boundary, "infinite") != 0) {
+        fprintf(stderr, "spatial_backend=hash currently requires boundary=infinite\n");
+        free_msd_distribution_steps(cfg);
+        free_lifetime_checkpoint_trials(cfg);
+        return 0;
+    }
+
+    if (strcmp(cfg->spatial_backend, "dense") == 0 && !cfg->L_provided) {
+        fprintf(stderr, "L is required for spatial_backend=dense\n");
+        free_msd_distribution_steps(cfg);
+        free_lifetime_checkpoint_trials(cfg);
+        return 0;
+    }
+
+    if (strcmp(cfg->spatial_backend, "hash") == 0 && !cfg->L_provided) {
+        cfg->L = -1;
+    }
+
+    if (cfg->msd_sample_mode[0] == '\0') {
+        if (cfg->save_msd_distribution) {
+            strcpy(cfg->msd_sample_mode, "exact");
+        } else {
+            strcpy(cfg->msd_sample_mode, "none");
+        }
+    } else {
+        cfg->save_msd_distribution = 1;
+    }
+
+    if (strcmp(cfg->msd_sample_mode, "exact") != 0 && strcmp(cfg->msd_sample_mode, "reservoir") != 0 && strcmp(cfg->msd_sample_mode, "none") != 0) {
+        fprintf(stderr, "Invalid msd_sample_mode: %s\n", cfg->msd_sample_mode);
+        free_msd_distribution_steps(cfg);
+        free_lifetime_checkpoint_trials(cfg);
+        return 0;
+    }
+
+    if (strcmp(cfg->msd_sample_mode, "reservoir") == 0 && cfg->msd_reservoir_size <= 0) {
+        fprintf(stderr, "msd_sample_mode=reservoir requires msd_reservoir_size > 0\n");
+        free_msd_distribution_steps(cfg);
+        free_lifetime_checkpoint_trials(cfg);
+        return 0;
+    }
+
+    if (!(cfg->hash_max_load_factor > 0.0) || cfg->hash_max_load_factor >= 1.0) {
+        fprintf(stderr, "hash_max_load_factor must be in (0, 1)\n");
+        free_msd_distribution_steps(cfg);
+        free_lifetime_checkpoint_trials(cfg);
+        return 0;
+    }
 
     if (cfg->save_msd_distribution) {
         if (!parse_msd_distribution_steps(cfg->msd_distribution_steps, cfg->n_steps, &cfg->msd_distribution_step_values, &cfg->msd_distribution_step_count)) {

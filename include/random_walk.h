@@ -2,10 +2,29 @@
 #define RANDOM_WALK_H
 
 #include <stdio.h>
+#include <stddef.h>
+
+#include "coordinate_hash_set.h"
 
 typedef struct {
     int x, y, z;
 } WalkPos;
+
+typedef enum {
+    SPATIAL_BACKEND_DENSE = 0,
+    SPATIAL_BACKEND_HASH = 1
+} SpatialBackend;
+
+typedef struct {
+    SpatialBackend backend;
+    int dim;
+    int L;
+    unsigned char *dense_visited;
+    int *dense_touched;
+    size_t dense_touched_cap;
+    size_t *dense_touched_count;
+    CoordinateHashSet *hash_visited;
+} VisitedState;
 
 typedef struct {
     int final_step;
@@ -49,7 +68,26 @@ WalkResult run_one_walk(
     const int *msd_steps,
     int msd_step_count,
     double *msd_r2_values,
-    WalkTiming *timing
+    WalkTiming *timing,
+    VisitedState *visited_state
 );
+
+int visited_state_init_dense(
+    VisitedState *state,
+    int dim,
+    int L,
+    unsigned char *dense_visited,
+    int *dense_touched,
+    size_t dense_touched_cap,
+    size_t *dense_touched_count
+);
+
+int visited_state_init_hash(
+    VisitedState *state,
+    int dim,
+    CoordinateHashSet *hash_visited
+);
+
+void visited_state_reset(VisitedState *state);
 
 #endif

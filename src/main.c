@@ -83,9 +83,11 @@ int main(int argc, char *argv[])
     unsigned int base_seed = (unsigned int)time(NULL);
     unsigned int seed = base_seed;
 
+    int seed_L = (cfg.L > 0) ? cfg.L : 0;
+
     if (cfg.seed_provided) {
         unsigned int parsed_seed;
-        if (!parse_seed_expression(cfg.seed_str, cfg.L, &parsed_seed)) {
+        if (!parse_seed_expression(cfg.seed_str, seed_L, &parsed_seed)) {
             fprintf(stderr, "Invalid seed expression: %s\n", cfg.seed_str);
             return 1;
         }
@@ -94,12 +96,15 @@ int main(int argc, char *argv[])
 
     if (cfg.seed_offset_provided) {
         unsigned int offset;
-        if (!parse_seed_expression(cfg.seed_offset_str, cfg.L, &offset)) {
+        if (!parse_seed_expression(cfg.seed_offset_str, seed_L, &offset)) {
             fprintf(stderr, "Invalid seed_offset expression: %s\n", cfg.seed_offset_str);
             return 1;
         }
         seed += offset;
     }
+
+    cfg.resolved_seed = seed;
+    cfg.resolved_seed_set = 1;
 
     percolation_seed(seed);
     printf("[RNG]\n");

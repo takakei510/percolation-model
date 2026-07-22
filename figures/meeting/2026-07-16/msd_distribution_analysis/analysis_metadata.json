@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-07-15T12:16:56.674965+00:00",
+  "input_file": "/home/takak/project/data/2d/random_walk/saw/L64_N50_T100_reliability/msd_samples.csv",
+  "output_dir": "/home/takak/project/figures/meeting/2026-07-16/msd_distribution_analysis",
+  "output_summary": "/home/takak/project/figures/meeting/2026-07-16/msd_distribution_analysis/msd_distribution_summary.csv",
+  "n_trials": 100,
+  "fit_start": 5,
+  "fit_end": 50,
+  "fit_min_alive": 10,
+  "fit_min_survival_probability": 0.1,
+  "fit_max_relative_standard_error": 0.5,
+  "histogram_steps": "5,10,20,30,40,50",
+  "boxplot_steps": "5,10,20,30,40,50",
+  "bins": "fd",
+  "hist_log_y": false,
+  "show_fliers": false,
+  "simulation_metadata_path": "/home/takak/project/data/2d/random_walk/saw/L64_N50_T100_reliability/simulation_metadata.json",
+  "simulation_metadata": {
+    "seed": "12345",
+    "seed_offset": "0",
+    "actual_seed": 12345,
+    "dim": 2,
+    "L": 64,
+    "n_steps": 50,
+    "n_trials": 100,
+    "walk_type": "saw",
+    "boundary": "free",
+    "msd_distribution_steps": "5,10,20,30,40,50",
+    "output_file": "data/2d/random_walk/saw/L64_N50_T100_reliability/msd_samples.csv"
+  }
+}

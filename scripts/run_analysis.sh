@@ -72,7 +72,10 @@ collect_pngs_with_prefix() {
 extract_case_metadata() {
   local input_path="$1"
   local case_tag
-  case_tag=$(basename "$(dirname "$input_path")")
+  case_tag=$(basename "$input_path")
+  if [[ ! "$case_tag" =~ ^L([0-9]+)_N([0-9]+)_T([0-9]+) ]]; then
+    case_tag=$(basename "$(dirname "$input_path")")
+  fi
   CASE_TAG="$case_tag"
 
   if [[ "$case_tag" =~ ^L([0-9]+)_N([0-9]+)_T([0-9]+) ]]; then
@@ -145,6 +148,7 @@ if [ -z "$MODE" ]; then
   echo "  bash scripts/run_analysis.sh scan_fit_alpha 2d saw <saw.csv> [--fit-ranges <start:end,...> | --fit-starts <list> --fit-ends <list>] [--min-alive-threshold <int>] [--export <dir>]"
   echo "  bash scripts/run_analysis.sh compare_msd_alpha_by_L 2d saw <input1> [input2 ...] --fit-start <int> --fit-end <int> [--export <dir>]"
   echo "  bash scripts/run_analysis.sh compare_fit_alpha_by_T 2d saw <input1> [input2 ...] --fit-start <int> --fit-end <int> [--export <dir>]"
+  echo "  bash scripts/run_analysis.sh compare_fit_alpha_by_checkpoint 2d saw <run-dir> --fit-start <int> --fit-end <int> [--export <dir>]"
   exit 1
 fi
 
@@ -714,6 +718,7 @@ case "$MODE" in
       --dimension "${DIM_NAME}"
 
     export_pngs "$EXPORT_SPEC" "$FIRST_CASE_TAG" \
+      "${OUTPUT_DIR}/msd_vs_step_by_L.png" \
       "${OUTPUT_DIR}/alpha_vs_L.png" \
       "${OUTPUT_DIR}/alpha_vs_log2L.png" \
       "${OUTPUT_DIR}/r2_vs_L.png" \
@@ -801,6 +806,97 @@ case "$MODE" in
       "${OUTPUT_DIR}/alpha_vs_log10T.png" \
       "${OUTPUT_DIR}/r2_vs_T.png" \
       "${OUTPUT_DIR}/n_alive_min_vs_T.png"
+    ;;
+
+  compare_fit_alpha_by_checkpoint)
+    DIM_NAME=${2:-2d}
+    MODEL=$3
+    shift 3
+    split_export_option "$@"
+
+    FIT_START=""
+    FIT_END=""
+    RUN_DIR=""
+
+    for arg in "${PARSED_ARGS[@]}"; do
+      case "$arg" in
+        --fit-start=*)
+          FIT_START="${arg#--fit-start=}"
+          ;;
+        --fit-start)
+          EXPECT_FIT_START_VALUE=1
+          ;;
+        --fit-end=*)
+          FIT_END="${arg#--fit-end=}"
+          ;;
+        --fit-end)
+          EXPECT_FIT_END_VALUE=1
+          ;;
+        *)
+          if [ "${EXPECT_FIT_START_VALUE:-0}" -eq 1 ]; then
+            FIT_START="$arg"
+            EXPECT_FIT_START_VALUE=0
+          elif [ "${EXPECT_FIT_END_VALUE:-0}" -eq 1 ]; then
+            FIT_END="$arg"
+            EXPECT_FIT_END_VALUE=0
+          elif [ -z "$RUN_DIR" ]; then
+            RUN_DIR="$arg"
+          else
+            echo "Unexpected extra argument: $arg"
+            exit 1
+          fi
+          ;;
+      esac
+    done
+
+    if [ "${EXPECT_FIT_START_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --fit-start"
+      exit 1
+    fi
+
+    if [ "${EXPECT_FIT_END_VALUE:-0}" -eq 1 ]; then
+      echo "Missing value for --fit-end"
+      exit 1
+    fi
+
+    if [ -z "$MODEL" ] || [ -z "$RUN_DIR" ] || [ -z "$FIT_START" ] || [ -z "$FIT_END" ]; then
+      echo "Usage:"
+      echo "  bash scripts/run_analysis.sh compare_fit_alpha_by_checkpoint 2d saw <run-dir> --fit-start <int> --fit-end <int> [--export <dir>]"
+      exit 1
+    fi
+
+    if ! extract_case_metadata "$RUN_DIR"; then
+      echo "Could not infer L/N/T from run directory: $RUN_DIR"
+      exit 1
+    fi
+
+    OUTPUT_DIR="data/${DIM_NAME}/random_walk/comparisons/msd"
+    mkdir -p "${OUTPUT_DIR}"
+
+    OUTPUT_CSV="${OUTPUT_DIR}/fit_vs_checkpoint_T.csv"
+
+    echo "[Analysis] Compare fit alpha across checkpoints"
+    echo "[Output dir] ${OUTPUT_DIR}"
+    echo "[Model] ${MODEL}"
+    echo "[Run dir] ${RUN_DIR}"
+    echo "[Fit range] ${FIT_START}..${FIT_END}"
+
+    FIRST_CASE_TAG=$(basename "$RUN_DIR")
+
+    "${PYTHON_BIN}" scripts/analysis/compare_fit_alpha_by_checkpoint.py \
+      --run-dir "${RUN_DIR}" \
+      --output-csv "${OUTPUT_CSV}" \
+      --output-dir "${OUTPUT_DIR}" \
+      --fit-start "$FIT_START" \
+      --fit-end "$FIT_END" \
+      --walk-type "${MODEL}" \
+      --dimension "${DIM_NAME}"
+
+    export_pngs "$EXPORT_SPEC" "$FIRST_CASE_TAG" \
+      "${OUTPUT_DIR}/alpha_vs_checkpoint_T.png" \
+      "${OUTPUT_DIR}/alpha_vs_log10_checkpoint_T.png" \
+      "${OUTPUT_DIR}/r2_vs_checkpoint_T.png" \
+      "${OUTPUT_DIR}/n_alive_min_vs_checkpoint_T.png"
     ;;
 
   compare_lifetime_by_N)
@@ -936,6 +1032,7 @@ case "$MODE" in
     echo "  compare_msd_alpha_by_T"
     echo "  compare_msd_alpha_by_L"
     echo "  compare_fit_alpha_by_T"
+    echo "  compare_fit_alpha_by_checkpoint"
     echo "  scan_fit_alpha"
     echo "  analyze_msd_distribution"
     echo "  analyze_lifetime_distribution"

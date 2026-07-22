@@ -13,8 +13,12 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 
+from msd_reliability_common import attach_reliability_metrics, find_reliability_summary_path, load_reliability_summary
 
-CASE_PATTERN = re.compile(r"^L(?P<L>\d+)_N(?P<N>\d+)_T(?P<T>\d+)(?:_(?P<suffix>.+))?$")
+from msd_reliability_common import attach_reliability_metrics, find_reliability_summary_path, load_reliability_summary
+
+
+CASE_PATTERN = re.compile(r"^(?:L(?P<L>\d+)_)?N(?P<N>\d+)_T(?P<T>\d+)(?:_(?P<suffix>.+))?$")
 DEFAULT_FIT_STARTS = [1, 10, 30, 50, 75, 100, 150, 200]
 DEFAULT_FIT_ENDS = [100, 150, 200, 250, 300, 400, 500, 600, 800]
 MIN_ALIVE_THRESHOLD = 0.0
@@ -29,7 +33,7 @@ def parse_case_metadata(path):
 
     return {
         "case": case,
-        "L": int(match.group("L")),
+        "L": int(match.group("L")) if match.group("L") is not None else None,
         "N": int(match.group("N")),
         "T": int(match.group("T")),
     }
@@ -113,6 +117,30 @@ def read_input(input_path):
     return df
 
 
+def _reliability_metrics(fit_df, reliability_summary):
+    defaults = {
+        "fit_n_alive_min": float("nan"),
+        "fit_n_alive_median": float("nan"),
+        "fit_max_relative_standard_error": float("nan"),
+        "fit_all_points_eligible": 0,
+        "fit_reliability_point_count": 0,
+        "fit_reliability_complete": 0,
+    }
+
+    if reliability_summary is None or fit_df.empty:
+        return defaults
+
+    merged = attach_reliability_metrics(fit_df[["step"]].copy(), reliability_summary)
+    return {
+        "fit_n_alive_min": float(merged["fit_n_alive_min"].iloc[0]),
+        "fit_n_alive_median": float(merged["fit_n_alive_median"].iloc[0]),
+        "fit_max_relative_standard_error": float(merged["fit_max_relative_standard_error"].iloc[0]),
+        "fit_all_points_eligible": int(merged["fit_all_points_eligible"].iloc[0]),
+        "fit_reliability_point_count": int(merged["fit_reliability_point_count"].iloc[0]),
+        "fit_reliability_complete": int(merged["fit_reliability_complete"].iloc[0]),
+    }
+
+
 def _closest_value(frame, target_step, column):
     if frame.empty:
         return float("nan")
@@ -120,7 +148,7 @@ def _closest_value(frame, target_step, column):
     return float(frame.loc[index, column])
 
 
-def evaluate_range(df, fit_start, fit_end, metadata, walk_type, dimension):
+def evaluate_range(df, fit_start, fit_end, metadata, walk_type, dimension, reliability_summary=None):
     fit_df = df[
         (df["step"] >= fit_start)
         & (df["step"] <= fit_end)
@@ -145,7 +173,7 @@ def evaluate_range(df, fit_start, fit_end, metadata, walk_type, dimension):
             f"Skipping fit range {fit_start}:{fit_end} because it has only {n_points} valid points.",
             RuntimeWarning,
         )
-        return {
+        row = {
             "walk_type": walk_type,
             "dimension": dimension,
             "L": metadata["L"],
@@ -160,6 +188,8 @@ def evaluate_range(df, fit_start, fit_end, metadata, walk_type, dimension):
             "mean_r2_start": mean_r2_start,
             "mean_r2_end": mean_r2_end,
         }
+        row.update(_reliability_metrics(fit_df, reliability_summary))
+        return row
 
     x = np.log(fit_df["step"].to_numpy(dtype=float))
     y = np.log(fit_df["mean_r2"].to_numpy(dtype=float))
@@ -170,7 +200,7 @@ def evaluate_range(df, fit_start, fit_end, metadata, walk_type, dimension):
     ss_tot = float(np.sum((y - np.mean(y)) ** 2))
     r2_score = float(1.0 - ss_res / ss_tot) if ss_tot > 0 else float("nan")
 
-    return {
+    row = {
         "walk_type": walk_type,
         "dimension": dimension,
         "L": metadata["L"],
@@ -185,6 +215,8 @@ def evaluate_range(df, fit_start, fit_end, metadata, walk_type, dimension):
         "mean_r2_start": mean_r2_start,
         "mean_r2_end": mean_r2_end,
     }
+    row.update(_reliability_metrics(fit_df, reliability_summary))
+    return row
 
 
 def _line_plot(ax, frame, x_key, y_key, series_key, title, xlabel):
@@ -317,6 +349,7 @@ def main():
     parser.add_argument("--fit-ranges")
     parser.add_argument("--fit-starts")
     parser.add_argument("--fit-ends")
+    parser.add_argument("--reliability-summary")
     parser.add_argument("--output-csv", required=True)
     parser.add_argument("--plot-prefix", required=True)
     parser.add_argument("--walk-type", required=True)
@@ -338,6 +371,9 @@ def main():
             RuntimeWarning,
         )
 
+    reliability_summary_path = find_reliability_summary_path(args.input, args.reliability_summary)
+    reliability_summary = load_reliability_summary(reliability_summary_path) if reliability_summary_path else None
+
     df = read_input(args.input)
     fit_ranges = build_fit_ranges(args.fit_ranges, args.fit_starts, args.fit_ends)
 
@@ -354,6 +390,7 @@ def main():
                 {"L": args.L, "N": args.n_trials},
                 args.walk_type,
                 args.dimension,
+                reliability_summary=reliability_summary,
             )
         )
 
@@ -373,6 +410,12 @@ def main():
             "n_alive_min",
             "mean_r2_start",
             "mean_r2_end",
+            "fit_n_alive_min",
+            "fit_n_alive_median",
+            "fit_max_relative_standard_error",
+            "fit_all_points_eligible",
+            "fit_reliability_point_count",
+            "fit_reliability_complete",
         ]
     ]
     summary_df.to_csv(args.output_csv, index=False)

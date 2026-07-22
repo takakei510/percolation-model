@@ -13,6 +13,8 @@ from matplotlib.ticker import LogLocator
 import numpy as np
 import pandas as pd
 
+from msd_reliability_common import attach_reliability_metrics, find_reliability_summary_path, load_reliability_summary
+
 
 PATH_PATTERN = re.compile(
     r"^(?P<prefix>.*?)/(?P<dim>2d|3d)/random_walk/(?P<model>[^/]+)/(?P<case>[^/]+)/(?P<file>[^/]+\.csv)$"
@@ -20,7 +22,7 @@ PATH_PATTERN = re.compile(
 LEGACY_PATH_PATTERN = re.compile(
     r"^(?P<prefix>.*?)/(?P<dim>2d|3d)/random_walk/(?P<case>[^/]+)/(?P<file>[^/]+\.csv)$"
 )
-CASE_PATTERN = re.compile(r"^L(?P<L>\d+)_N(?P<N>\d+)_T(?P<T>\d+)(?:_(?P<suffix>.+))?$")
+CASE_PATTERN = re.compile(r"^(?:L(?P<L>\d+)_)?N(?P<N>\d+)_T(?P<T>\d+)(?:_(?P<suffix>.+))?$")
 VALUE_COLUMNS = ["mean_r2", "msd", "r2_mean", "mean_squared_displacement"]
 
 
@@ -49,7 +51,7 @@ def parse_metadata_from_path(path, walk_type=None):
         "dim": int(dim_name[0]),
         "walk_type": walk_type,
         "case": case,
-        "L": int(case_match.group("L")),
+        "L": int(case_match.group("L")) if case_match.group("L") is not None else None,
         "N": int(case_match.group("N")),
         "T": int(case_match.group("T")),
     }
@@ -65,6 +67,30 @@ def detect_value_column(df):
         "Input CSV is missing a usable MSD column. Expected one of: "
         + ", ".join(VALUE_COLUMNS)
     )
+
+
+def _reliability_metrics(fit_df, reliability_summary):
+    defaults = {
+        "fit_n_alive_min": float("nan"),
+        "fit_n_alive_median": float("nan"),
+        "fit_max_relative_standard_error": float("nan"),
+        "fit_all_points_eligible": 0,
+        "fit_reliability_point_count": 0,
+        "fit_reliability_complete": 0,
+    }
+
+    if reliability_summary is None or fit_df.empty:
+        return defaults
+
+    merged = attach_reliability_metrics(fit_df[["step"]].copy(), reliability_summary)
+    return {
+        "fit_n_alive_min": float(merged["fit_n_alive_min"].iloc[0]),
+        "fit_n_alive_median": float(merged["fit_n_alive_median"].iloc[0]),
+        "fit_max_relative_standard_error": float(merged["fit_max_relative_standard_error"].iloc[0]),
+        "fit_all_points_eligible": int(merged["fit_all_points_eligible"].iloc[0]),
+        "fit_reliability_point_count": int(merged["fit_reliability_point_count"].iloc[0]),
+        "fit_reliability_complete": int(merged["fit_reliability_complete"].iloc[0]),
+    }
 
 
 def read_input(input_path):
@@ -157,6 +183,9 @@ def build_summary_dataframe(input_paths, fit_start, fit_end, walk_type=None):
     for input_path in input_paths:
         metadata, frame = read_input(input_path)
         fit_result, fit_df = fit_loglog(frame, fit_start, fit_end)
+        reliability_summary_path = find_reliability_summary_path(input_path)
+        reliability_summary = load_reliability_summary(reliability_summary_path) if reliability_summary_path else None
+        fit_result.update(_reliability_metrics(fit_df, reliability_summary))
         row = {
             "walk_type": walk_type or metadata["walk_type"],
             "dimension": metadata["dim_name"],
@@ -190,6 +219,12 @@ def build_summary_dataframe(input_paths, fit_start, fit_end, walk_type=None):
             "n_alive_min",
             "mean_r2_start",
             "mean_r2_end",
+            "fit_n_alive_min",
+            "fit_n_alive_median",
+            "fit_max_relative_standard_error",
+            "fit_all_points_eligible",
+            "fit_reliability_point_count",
+            "fit_reliability_complete",
         ]
     ]
     return summary, curves

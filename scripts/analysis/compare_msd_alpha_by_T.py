@@ -12,6 +12,8 @@ from matplotlib.ticker import LogLocator
 import numpy as np
 import pandas as pd
 
+from msd_reliability_common import attach_reliability_metrics, find_reliability_summary_path, load_reliability_summary
+
 
 PATH_PATTERN = re.compile(
     r"^(?P<prefix>.*?)/(?P<dim>2d|3d)/random_walk/(?P<model>[^/]+)/(?P<case>[^/]+)/(?P<file>[^/]+\.csv)$"
@@ -19,7 +21,7 @@ PATH_PATTERN = re.compile(
 LEGACY_PATH_PATTERN = re.compile(
     r"^(?P<prefix>.*?)/(?P<dim>2d|3d)/random_walk/(?P<case>[^/]+)/(?P<file>[^/]+\.csv)$"
 )
-CASE_PATTERN = re.compile(r"^L(?P<L>\d+)_N(?P<N>\d+)_T(?P<T>\d+)(?:_(?P<suffix>.+))?$")
+CASE_PATTERN = re.compile(r"^(?:L(?P<L>\d+)_)?N(?P<N>\d+)_T(?P<T>\d+)(?:_(?P<suffix>.+))?$")
 VALUE_COLUMNS = [
     "mean_r2",
     "msd",
@@ -55,7 +57,7 @@ def parse_metadata_from_path(path, model_override=None):
         "dim": int(dim_name[0]),
         "model": model,
         "case": case,
-        "L": int(case_match.group("L")),
+        "L": int(case_match.group("L")) if case_match.group("L") is not None else None,
         "N": int(case_match.group("N")),
         "T": int(case_match.group("T")),
     }
@@ -73,7 +75,31 @@ def detect_value_column(df):
     )
 
 
-def load_input(path, fit_start, fit_end, model_override=None):
+    def _reliability_metrics(fit_df, reliability_summary):
+        defaults = {
+            "fit_n_alive_min": float("nan"),
+            "fit_n_alive_median": float("nan"),
+            "fit_max_relative_standard_error": float("nan"),
+            "fit_all_points_eligible": 0,
+            "fit_reliability_point_count": 0,
+            "fit_reliability_complete": 0,
+        }
+
+        if reliability_summary is None or fit_df.empty:
+            return defaults
+
+        merged = attach_reliability_metrics(fit_df[["step"]].copy(), reliability_summary)
+        return {
+            "fit_n_alive_min": float(merged["fit_n_alive_min"].iloc[0]),
+            "fit_n_alive_median": float(merged["fit_n_alive_median"].iloc[0]),
+            "fit_max_relative_standard_error": float(merged["fit_max_relative_standard_error"].iloc[0]),
+            "fit_all_points_eligible": int(merged["fit_all_points_eligible"].iloc[0]),
+            "fit_reliability_point_count": int(merged["fit_reliability_point_count"].iloc[0]),
+            "fit_reliability_complete": int(merged["fit_reliability_complete"].iloc[0]),
+        }
+
+
+def load_input(path, fit_start, fit_end, model_override=None, reliability_summary=None):
     if not os.path.exists(path):
         raise FileNotFoundError(f"Input file not found: {path}")
 
@@ -97,6 +123,8 @@ def load_input(path, fit_start, fit_end, model_override=None):
         & (fit_df["step"] > 0)
         & (fit_df["value"] > 0)
     ].copy()
+
+    reliability_metrics = _reliability_metrics(fit_df, reliability_summary)
 
     if fit_df.empty:
         raise ValueError(
@@ -133,6 +161,7 @@ def load_input(path, fit_start, fit_end, model_override=None):
         "r2": r2,
         "n_points": int(len(fit_df)),
     }
+    row.update(reliability_metrics)
     return row, df, value_column
 
 
@@ -140,11 +169,14 @@ def build_summary_dataframe(input_paths, fit_start, fit_end, model_override=None
     entries = []
 
     for input_path in input_paths:
+        reliability_summary_path = find_reliability_summary_path(input_path)
+        reliability_summary = load_reliability_summary(reliability_summary_path) if reliability_summary_path else None
         row, df, value_column = load_input(
             input_path,
             fit_start,
             fit_end,
             model_override=model_override,
+            reliability_summary=reliability_summary,
         )
         row["input_path"] = input_path
         entries.append((row, df, value_column))
@@ -167,6 +199,12 @@ def build_summary_dataframe(input_paths, fit_start, fit_end, model_override=None
             "intercept",
             "r2",
             "n_points",
+            "fit_n_alive_min",
+            "fit_n_alive_median",
+            "fit_max_relative_standard_error",
+            "fit_all_points_eligible",
+            "fit_reliability_point_count",
+            "fit_reliability_complete",
         ]
     ]
     return summary, rows, curves, value_columns

@@ -13,6 +13,8 @@ from matplotlib.ticker import LogLocator
 import numpy as np
 import pandas as pd
 
+from msd_reliability_common import attach_reliability_metrics, find_reliability_summary_path, load_reliability_summary
+
 
 PATH_PATTERN = re.compile(
     r"^(?P<prefix>.*?)/(?P<dim>2d|3d)/random_walk/(?P<model>[^/]+)/(?P<case>[^/]+)/(?P<file>[^/]+\.csv)$"
@@ -74,6 +76,30 @@ def detect_value_column(df):
     )
 
 
+def _reliability_metrics(fit_df, reliability_summary):
+    defaults = {
+        "fit_n_alive_min": float("nan"),
+        "fit_n_alive_median": float("nan"),
+        "fit_max_relative_standard_error": float("nan"),
+        "fit_all_points_eligible": 0,
+        "fit_reliability_point_count": 0,
+        "fit_reliability_complete": 0,
+    }
+
+    if reliability_summary is None or fit_df.empty:
+        return defaults
+
+    merged = attach_reliability_metrics(fit_df[["step"]].copy(), reliability_summary)
+    return {
+        "fit_n_alive_min": float(merged["fit_n_alive_min"].iloc[0]),
+        "fit_n_alive_median": float(merged["fit_n_alive_median"].iloc[0]),
+        "fit_max_relative_standard_error": float(merged["fit_max_relative_standard_error"].iloc[0]),
+        "fit_all_points_eligible": int(merged["fit_all_points_eligible"].iloc[0]),
+        "fit_reliability_point_count": int(merged["fit_reliability_point_count"].iloc[0]),
+        "fit_reliability_complete": int(merged["fit_reliability_complete"].iloc[0]),
+    }
+
+
 def _numeric_series(df, column):
     if column not in df.columns:
         return None
@@ -83,7 +109,7 @@ def _numeric_series(df, column):
     return series
 
 
-def load_input(path, fit_start, fit_end, model_override=None):
+def load_input(path, fit_start, fit_end, model_override=None, reliability_summary=None):
     if not os.path.exists(path):
         raise FileNotFoundError(f"Input file not found: {path}")
 
@@ -117,6 +143,7 @@ def load_input(path, fit_start, fit_end, model_override=None):
 
     fit_df = fit_df.sort_values("step").reset_index(drop=True)
     n_points = int(len(fit_df))
+    reliability_metrics = _reliability_metrics(fit_df, reliability_summary)
 
     if n_points > 0 and has_n_alive:
         n_alive_min = float(fit_df["n_alive"].min())
@@ -137,7 +164,7 @@ def load_input(path, fit_start, fit_end, model_override=None):
             f"Skipping fit range [{fit_start}, {fit_end}] because it has only {n_points} valid points.",
             RuntimeWarning,
         )
-        return {
+        row = {
             "walk_type": model_override or metadata["model"],
             "dimension": metadata["dim_name"],
             "L": metadata["L"],
@@ -152,7 +179,9 @@ def load_input(path, fit_start, fit_end, model_override=None):
             "n_alive_min": n_alive_min,
             "mean_r2_start": mean_r2_start,
             "mean_r2_end": mean_r2_end,
-        }, df, value_column
+        }
+        row.update(reliability_metrics)
+        return row, df, value_column
 
     x = np.log(fit_df["step"].to_numpy(dtype=float))
     y = np.log(fit_df["value"].to_numpy(dtype=float))
@@ -163,7 +192,7 @@ def load_input(path, fit_start, fit_end, model_override=None):
     ss_tot = float(np.sum((y - np.mean(y)) ** 2))
     r2_score = float(1.0 - ss_res / ss_tot) if ss_tot > 0 else float("nan")
 
-    return {
+    row = {
         "walk_type": model_override or metadata["model"],
         "dimension": metadata["dim_name"],
         "L": metadata["L"],
@@ -178,7 +207,9 @@ def load_input(path, fit_start, fit_end, model_override=None):
         "n_alive_min": n_alive_min,
         "mean_r2_start": mean_r2_start,
         "mean_r2_end": mean_r2_end,
-    }, df, value_column
+    }
+    row.update(reliability_metrics)
+    return row, df, value_column
 
 
 def _closest_value(frame, target_step, column):
@@ -191,7 +222,15 @@ def _closest_value(frame, target_step, column):
 def build_summary_dataframe(input_paths, fit_start, fit_end, model_override=None):
     entries = []
     for input_path in input_paths:
-        row, df, value_column = load_input(input_path, fit_start, fit_end, model_override=model_override)
+        reliability_summary_path = find_reliability_summary_path(input_path)
+        reliability_summary = load_reliability_summary(reliability_summary_path) if reliability_summary_path else None
+        row, df, value_column = load_input(
+            input_path,
+            fit_start,
+            fit_end,
+            model_override=model_override,
+            reliability_summary=reliability_summary,
+        )
         row["input_path"] = input_path
         entries.append((row, df, value_column))
 
@@ -220,6 +259,12 @@ def build_summary_dataframe(input_paths, fit_start, fit_end, model_override=None
             "n_alive_min",
             "mean_r2_start",
             "mean_r2_end",
+            "fit_n_alive_min",
+            "fit_n_alive_median",
+            "fit_max_relative_standard_error",
+            "fit_all_points_eligible",
+            "fit_reliability_point_count",
+            "fit_reliability_complete",
         ]
     ]
     return summary, rows, curves, value_columns
@@ -313,6 +358,39 @@ def plot_n_alive_min_vs_L(summary_df, output_dir):
     return out_path
 
 
+def plot_msd_vs_step_by_L(rows, curves, value_columns, output_dir):
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for row, curve, value_column in zip(rows, curves, value_columns):
+        plot_curve = curve.copy()
+        plot_curve = plot_curve[(plot_curve["step"] > 0) & (plot_curve[value_column] > 0)]
+        if plot_curve.empty:
+            continue
+
+        plot_curve = plot_curve.sort_values("step")
+        ax.loglog(
+            plot_curve["step"],
+            plot_curve[value_column],
+            linestyle="-",
+            linewidth=1.5,
+            label=f"L={int(row['L'])}",
+        )
+
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Mean Squared Displacement")
+    ax.set_title("MSD vs Step (Comparison by L)")
+    ax.grid(True, which="both")
+    ax.xaxis.set_major_locator(LogLocator(base=10))
+    ax.yaxis.set_major_locator(LogLocator(base=10))
+    ax.legend()
+    fig.tight_layout()
+
+    out_path = os.path.join(output_dir, "msd_vs_step_by_L.png")
+    fig.savefig(out_path, dpi=300)
+    plt.close(fig)
+    return out_path
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--inputs", nargs="+", required=True)
@@ -341,7 +419,8 @@ def main():
     print(f"Saved: {args.output_csv}")
 
     # Curves are loaded here so this script can be extended later without changing the API.
-    _ = rows, curves, value_columns
+    msd_path = plot_msd_vs_step_by_L(rows, curves, value_columns, args.output_dir)
+    print(f"Saved: {msd_path}")
 
     alpha_vs_l_path = plot_alpha_vs_L(summary, args.output_dir)
     print(f"Saved: {alpha_vs_l_path}")

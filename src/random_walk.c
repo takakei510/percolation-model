@@ -1,7 +1,7 @@
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include <time.h>
 
 #include "random_walk.h"
@@ -40,6 +40,117 @@ static double now_seconds(void)
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 }
 
+int visited_state_init_dense(
+    VisitedState *state,
+    int dim,
+    int L,
+    unsigned char *dense_visited,
+    int *dense_touched,
+    size_t dense_touched_cap,
+    size_t *dense_touched_count
+)
+{
+    if (!state) {
+        return 0;
+    }
+
+    state->backend = SPATIAL_BACKEND_DENSE;
+    state->dim = dim;
+    state->L = L;
+    state->dense_visited = dense_visited;
+    state->dense_touched = dense_touched;
+    state->dense_touched_cap = dense_touched_cap;
+    state->dense_touched_count = dense_touched_count;
+    state->hash_visited = NULL;
+    return 1;
+}
+
+int visited_state_init_hash(
+    VisitedState *state,
+    int dim,
+    CoordinateHashSet *hash_visited
+)
+{
+    if (!state || !hash_visited) {
+        return 0;
+    }
+
+    state->backend = SPATIAL_BACKEND_HASH;
+    state->dim = dim;
+    state->L = 0;
+    state->dense_visited = NULL;
+    state->dense_touched = NULL;
+    state->dense_touched_cap = 0;
+    state->dense_touched_count = NULL;
+    state->hash_visited = hash_visited;
+    return 1;
+}
+
+static int visited_state_contains(const VisitedState *state, int x, int y, int z)
+{
+    if (!state) {
+        return 0;
+    }
+
+    if (state->backend == SPATIAL_BACKEND_HASH) {
+        return coordinate_hash_set_contains(state->hash_visited, x, y, z);
+    }
+
+    if (!state->dense_visited) {
+        return 0;
+    }
+
+    return state->dense_visited[index_3d(x, y, z, state->L)] != 0;
+}
+
+static int visited_state_insert(VisitedState *state, int x, int y, int z)
+{
+    if (!state) {
+        return 0;
+    }
+
+    if (state->backend == SPATIAL_BACKEND_HASH) {
+        return coordinate_hash_set_insert(state->hash_visited, x, y, z) >= 0;
+    }
+
+    if (!state->dense_visited || !state->dense_touched || !state->dense_touched_count) {
+        return 0;
+    }
+
+    int idx = index_3d(x, y, z, state->L);
+    if (!state->dense_visited[idx]) {
+        state->dense_visited[idx] = 1;
+        if (*state->dense_touched_count >= state->dense_touched_cap) {
+            fprintf(stderr, "Touched list capacity exceeded\n");
+            exit(1);
+        }
+        state->dense_touched[(*state->dense_touched_count)++] = idx;
+    }
+
+    return 1;
+}
+
+void visited_state_reset(VisitedState *state)
+{
+    if (!state) {
+        return;
+    }
+
+    if (state->backend == SPATIAL_BACKEND_HASH) {
+        coordinate_hash_set_clear(state->hash_visited);
+        return;
+    }
+
+    if (!state->dense_visited || !state->dense_touched || !state->dense_touched_count) {
+        return;
+    }
+
+    for (size_t i = 0; i < *state->dense_touched_count; i++) {
+        state->dense_visited[state->dense_touched[i]] = 0;
+    }
+    *state->dense_touched_count = 0;
+}
+
 WalkResult run_one_walk(
     int dim,
     int L,
@@ -68,19 +179,16 @@ WalkResult run_one_walk(
     const int *msd_steps,
     int msd_step_count,
     double *msd_r2_values,
-    WalkTiming *timing
+    WalkTiming *timing,
+    VisitedState *visited_state
 )
 {
-    WalkResult result;
+    WalkResult result = {0, 0, 0, 0};
 
-    result.final_step = 0;
-    result.trapped = 0;
-    result.contact_dead = 0;
-    result.boundary_dead = 0;
-
-    int x0 = L / 2;
-    int y0 = L / 2;
-    int z0 = (dim == 3) ? L / 2 : 0;
+    int infinite_boundary = strcmp(boundary, "infinite") == 0;
+    int x0 = infinite_boundary ? 0 : (L / 2);
+    int y0 = infinite_boundary ? 0 : (L / 2);
+    int z0 = (dim == 3) ? (infinite_boundary ? 0 : (L / 2)) : 0;
 
     int x = x0;
     int y = y0;
@@ -92,15 +200,21 @@ WalkResult run_one_walk(
 
     if (use_visited) {
         *touched_count = 0;
-
-        int start_idx = index_3d(x, y, z, L);
-        if (!visited[start_idx]) {
-            visited[start_idx] = 1;
-            if (*touched_count >= touched_cap) {
-                fprintf(stderr, "Touched list capacity exceeded\n");
+        if (visited_state) {
+            if (!visited_state_insert(visited_state, x, y, z)) {
+                fprintf(stderr, "Failed to initialize visited state\n");
                 exit(1);
             }
-            touched[(*touched_count)++] = start_idx;
+        } else if (visited) {
+            int start_idx = index_3d(x, y, z, L);
+            if (!visited[start_idx]) {
+                visited[start_idx] = 1;
+                if (*touched_count >= touched_cap) {
+                    fprintf(stderr, "Touched list capacity exceeded\n");
+                    exit(1);
+                }
+                touched[(*touched_count)++] = start_idx;
+            }
         }
     }
 
@@ -119,7 +233,6 @@ WalkResult run_one_walk(
         double r2 = (double)(dx0 * dx0 + dy0 * dy0 + dz0 * dz0);
         double r = sqrt(r2);
 
-        /* Radius of gyration up to this step */
         sx += dx0;
         sy += dy0;
         sz += dz0;
@@ -146,11 +259,9 @@ WalkResult run_one_walk(
         sum_rg2_all[step] += rg2;
         n_alive[step] += 1;
 
-
         if (r2 < min_r2[step]) {
             min_r2[step] = r2;
         }
-
         if (r2 > max_r2[step]) {
             max_r2[step] = r2;
         }
@@ -182,7 +293,6 @@ WalkResult run_one_walk(
         };
 
         int max_dirs = (dim == 3) ? 6 : 4;
-
         int candidates[6][3];
         int n_candidates = 0;
 
@@ -199,18 +309,26 @@ WalkResult run_one_walk(
                 continue;
             }
 
-            if (strcmp(boundary, "periodic") == 0) {
-                apply_periodic(&nx, &ny, &nz, dim, L);
-            } else {
-                if (!inside(nx, ny, nz, dim, L)) {
-                    continue;
+            if (!infinite_boundary) {
+                if (strcmp(boundary, "periodic") == 0) {
+                    apply_periodic(&nx, &ny, &nz, dim, L);
+                } else {
+                    if (!inside(nx, ny, nz, dim, L)) {
+                        continue;
+                    }
                 }
             }
 
             if (strcmp(walk_type, "saw") == 0) {
-                int idx = index_3d(nx, ny, nz, L);
-                if (visited[idx]) {
-                    continue;
+                if (visited_state) {
+                    if (visited_state_contains(visited_state, nx, ny, nz)) {
+                        continue;
+                    }
+                } else if (visited) {
+                    int idx = index_3d(nx, ny, nz, L);
+                    if (visited[idx]) {
+                        continue;
+                    }
                 }
             }
 
@@ -243,12 +361,41 @@ WalkResult run_one_walk(
         int nz = candidates[choice][2];
 
         if (strcmp(walk_type, "death_on_contact") == 0) {
-            if (strcmp(boundary, "periodic") == 0) {
-                apply_periodic(&nx, &ny, &nz, dim, L);
-            } else {
-                if (!inside(nx, ny, nz, dim, L)) {
+            if (!infinite_boundary) {
+                if (strcmp(boundary, "periodic") == 0) {
+                    apply_periodic(&nx, &ny, &nz, dim, L);
+                } else {
+                    if (!inside(nx, ny, nz, dim, L)) {
+                        result.trapped = 1;
+                        result.boundary_dead = 1;
+                        result.final_step = step;
+
+                        if (timing) {
+                            timing->time_walk += now_seconds() - walk_start;
+                        }
+
+                        break;
+                    }
+                }
+            }
+
+            if (visited_state) {
+                if (visited_state_contains(visited_state, nx, ny, nz)) {
                     result.trapped = 1;
-                    result.boundary_dead = 1;
+                    result.contact_dead = 1;
+                    result.final_step = step;
+
+                    if (timing) {
+                        timing->time_walk += now_seconds() - walk_start;
+                    }
+
+                    break;
+                }
+            } else if (visited) {
+                int idx = index_3d(nx, ny, nz, L);
+                if (visited[idx]) {
+                    result.trapped = 1;
+                    result.contact_dead = 1;
                     result.final_step = step;
 
                     if (timing) {
@@ -258,19 +405,6 @@ WalkResult run_one_walk(
                     break;
                 }
             }
-
-            int idx = index_3d(nx, ny, nz, L);
-            if (visited[idx]) {
-                result.trapped = 1;
-                result.contact_dead = 1;
-                result.final_step = step;
-
-                if (timing) {
-                    timing->time_walk += now_seconds() - walk_start;
-                }
-
-                break;
-            }
         }
 
         x = nx;
@@ -278,14 +412,21 @@ WalkResult run_one_walk(
         z = nz;
 
         if (use_visited) {
-            int idx = index_3d(x, y, z, L);
-            if (!visited[idx]) {
-                visited[idx] = 1;
-                if (*touched_count >= touched_cap) {
-                    fprintf(stderr, "Touched list capacity exceeded\n");
+            if (visited_state) {
+                if (!visited_state_insert(visited_state, x, y, z)) {
+                    fprintf(stderr, "Failed to insert visited state\n");
                     exit(1);
                 }
-                touched[(*touched_count)++] = idx;
+            } else if (visited) {
+                int idx = index_3d(x, y, z, L);
+                if (!visited[idx]) {
+                    visited[idx] = 1;
+                    if (*touched_count >= touched_cap) {
+                        fprintf(stderr, "Touched list capacity exceeded\n");
+                        exit(1);
+                    }
+                    touched[(*touched_count)++] = idx;
+                }
             }
         }
 
@@ -298,10 +439,14 @@ WalkResult run_one_walk(
 
     double reset_start = now_seconds();
     if (use_visited) {
-        for (size_t i = 0; i < *touched_count; i++) {
-            visited[touched[i]] = 0;
+        if (visited_state) {
+            visited_state_reset(visited_state);
+        } else if (visited) {
+            for (size_t i = 0; i < *touched_count; i++) {
+                visited[touched[i]] = 0;
+            }
+            *touched_count = 0;
         }
-        *touched_count = 0;
     }
     if (timing) {
         timing->time_reset += now_seconds() - reset_start;
@@ -314,10 +459,11 @@ WalkResult run_one_walk(
             }
             fprintf(
                 msd_fp,
-                "%d,%d,%.10f,%d,%d,%d,%d\n",
+                "%d,%d,%.10f,%d,%d,%d,%d,%d\n",
                 trial,
                 msd_steps[i],
                 msd_r2_values[i],
+                result.final_step,
                 1,
                 result.trapped,
                 result.boundary_dead,
