@@ -5,6 +5,7 @@ on:
     branches: [feature/perm]
     paths:
       - "scripts/dev/apply_tour_checkpoint_refactor.py"
+      - "scripts/dev/repair_tour_checkpoint_refactor.py"
       - ".github/workflows/apply-tour-checkpoint-refactor.yml"
   workflow_dispatch:
 
@@ -22,6 +23,9 @@ jobs:
         with:
           ref: feature/perm
           fetch-depth: 0
+
+      - name: Repair guarded refactor script
+        run: python scripts/dev/repair_tour_checkpoint_refactor.py
 
       - name: Apply guarded source refactor
         run: python scripts/dev/apply_tour_checkpoint_refactor.py
