@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <float.h>
 #include <math.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -699,6 +700,86 @@ static long double compute_weighted_mean_r2_standard_error(const TourBuffer *buf
     return sqrtl(((long double)valid_count - 1.0L) / (long double)valid_count * m2);
 }
 
+
+static int write_convergence_snapshot(
+    FILE *fp,
+    const Config *cfg,
+    const StepStats *steps,
+    const TourBuffer *buffer,
+    size_t step_count,
+    unsigned long long completed_tours
+)
+{
+    if (!fp || completed_tours == 0ULL) {
+        return 1;
+    }
+
+    TourBuffer prefix_buffer = *buffer;
+    if (prefix_buffer.enabled) {
+        prefix_buffer.tour_count = (size_t)completed_tours;
+    }
+
+    for (size_t step = 0; step < step_count; step++) {
+        long double branch_sum = scaled_positive_value(&steps[step].branch_weight_sum);
+        long double branch_sum_r2 = scaled_positive_value(&steps[step].branch_weight_r2_sum);
+        long double branch_sum_sq = scaled_positive_value(&steps[step].branch_weight_squared_sum);
+        long double tour_sum = scaled_positive_value(&steps[step].tour_weight_sum);
+        long double tour_sum_r2 = scaled_positive_value(&steps[step].tour_weight_r2_sum);
+        long double tour_sum_sq = scaled_positive_value(&steps[step].tour_weight_squared_sum);
+
+        long double weighted_mean_r2 = (branch_sum > 0.0L) ? (branch_sum_r2 / branch_sum) : NAN;
+        long double weighted_mean_r2_standard_error =
+            compute_weighted_mean_r2_standard_error(&prefix_buffer, step, tour_sum, tour_sum_r2);
+        long double partition_sum_estimate = tour_sum / (long double)completed_tours;
+        long double partition_sum_standard_error =
+            compute_partition_sum_standard_error(&steps[step], completed_tours);
+        long double branch_weight_ess =
+            (branch_sum_sq > 0.0L) ? (branch_sum * branch_sum / branch_sum_sq) : NAN;
+        long double tour_weight_ess =
+            (tour_sum_sq > 0.0L) ? (tour_sum * tour_sum / tour_sum_sq) : NAN;
+        long double mean_weight =
+            (steps[step].sample_count > 0ULL) ?
+            (branch_sum / (long double)steps[step].sample_count) : NAN;
+
+        long double lower_threshold = NAN;
+        long double upper_threshold = NAN;
+        int threshold_enabled = perm_threshold_for_step(
+            cfg,
+            steps,
+            completed_tours,
+            step,
+            &lower_threshold,
+            &upper_threshold
+        );
+        if (!threshold_enabled) {
+            lower_threshold = NAN;
+            upper_threshold = NAN;
+        }
+
+        fprintf(
+            fp,
+            "%llu,%zu,%.17Lg,%.17Lg,%.17Lg,%.17Lg,%llu,%llu,%.17Lg,%.17Lg,%.17Lg,%.17Lg,%.17Lg,%.17Lg,%d\n",
+            completed_tours,
+            step,
+            weighted_mean_r2,
+            weighted_mean_r2_standard_error,
+            partition_sum_estimate,
+            partition_sum_standard_error,
+            steps[step].sample_count,
+            steps[step].nonzero_tours,
+            branch_weight_ess,
+            tour_weight_ess,
+            mean_weight,
+            steps[step].max_weight,
+            lower_threshold,
+            upper_threshold,
+            threshold_enabled
+        );
+    }
+
+    return fflush(fp) == 0;
+}
+
 static int run_weighted_saw(const Config *cfg, int use_perm)
 {
     if (!validate_perm_config(cfg)) {
@@ -737,9 +818,11 @@ static int run_weighted_saw(const Config *cfg, int use_perm)
     char main_path[512];
     char tours_path[512];
     char metadata_path[512];
+    char convergence_path[512];
     build_sibling_path(main_path, sizeof(main_path), cfg->output, use_perm ? "perm.csv" : "rosenbluth.csv");
     build_sibling_path(tours_path, sizeof(tours_path), cfg->output, "perm_tours.csv");
     build_sibling_path(metadata_path, sizeof(metadata_path), cfg->output, "simulation_metadata.json");
+    build_sibling_path(convergence_path, sizeof(convergence_path), cfg->output, "weighted_convergence.csv");
 
     if (!ensure_parent_dir(main_path) || !ensure_parent_dir(metadata_path) || (use_perm && !ensure_parent_dir(tours_path))) {
         fprintf(stderr, "Failed to create PERM output directories\n");
@@ -756,11 +839,25 @@ static int run_weighted_saw(const Config *cfg, int use_perm)
         return 0;
     }
 
+    FILE *convergence_fp = NULL;
+    if (strcmp(cfg->tour_checkpoint_mode, "log10") == 0) {
+        convergence_fp = fopen(convergence_path, "w");
+        if (!convergence_fp) {
+            fprintf(stderr, "Failed to open convergence file: %s\n", convergence_path);
+            fclose(main_fp);
+            tour_buffer_destroy(&buffer);
+            free(steps);
+            return 0;
+        }
+        fprintf(convergence_fp, "checkpoint_tours,step,weighted_mean_r2,weighted_mean_r2_standard_error,partition_sum_estimate,partition_sum_standard_error,sample_count,nonzero_tours,branch_weight_ess,tour_weight_ess,mean_weight,max_weight,lower_threshold,upper_threshold,threshold_enabled\n");
+    }
+
     FILE *tours_fp = NULL;
     if (use_perm) {
         tours_fp = fopen(tours_path, "w");
         if (!tours_fp) {
             fprintf(stderr, "Failed to open tour diagnostics file: %s\n", tours_path);
+            if (convergence_fp) fclose(convergence_fp);
             fclose(main_fp);
             tour_buffer_destroy(&buffer);
             free(steps);
@@ -791,6 +888,8 @@ static int run_weighted_saw(const Config *cfg, int use_perm)
         free(steps);
         return 0;
     }
+
+    unsigned long long next_checkpoint = (unsigned long long)cfg->tour_checkpoint_start;
 
     for (int tour = 0; tour < cfg->n_tours; tour++) {
         memset(local_tour_weight_sum, 0, step_count * sizeof(long double));
@@ -1002,6 +1101,22 @@ static int run_weighted_saw(const Config *cfg, int use_perm)
             }
         }
 
+        unsigned long long completed_tours = (unsigned long long)tour + 1ULL;
+        if (convergence_fp &&
+            (completed_tours == next_checkpoint || completed_tours == (unsigned long long)cfg->n_tours)) {
+            if (!write_convergence_snapshot(convergence_fp, cfg, steps, &buffer, step_count, completed_tours)) {
+                fprintf(stderr, "Failed to write tour checkpoint at %llu tours\n", completed_tours);
+                goto cleanup_fail;
+            }
+            if (completed_tours == next_checkpoint) {
+                if (next_checkpoint <= ULLONG_MAX / 10ULL) {
+                    next_checkpoint *= 10ULL;
+                } else {
+                    next_checkpoint = ULLONG_MAX;
+                }
+            }
+        }
+
         if (use_perm && tours_fp) {
             fprintf(tours_fp, "%d,%d,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%.17Lg,%llu,%llu\n",
                 tour,
@@ -1077,6 +1192,20 @@ static int run_weighted_saw(const Config *cfg, int use_perm)
         );
     }
 
+    if (convergence_fp && fclose(convergence_fp) != 0) {
+        if (tours_fp) fclose(tours_fp);
+        fclose(main_fp);
+        tour_buffer_destroy(&buffer);
+        free(steps);
+        free(local_tour_weight_sum);
+        free(local_tour_weight_r2_sum);
+        free(local_tour_weight_squared_sum);
+        free(threshold_lower);
+        free(threshold_upper);
+        free(threshold_enabled);
+        return 0;
+    }
+
     if (fclose(main_fp) != 0) {
         if (tours_fp) fclose(tours_fp);
         tour_buffer_destroy(&buffer);
@@ -1125,6 +1254,9 @@ static int run_weighted_saw(const Config *cfg, int use_perm)
     return 1;
 
 cleanup_fail:
+    if (convergence_fp) {
+        fclose(convergence_fp);
+    }
     if (tours_fp) {
         fclose(tours_fp);
     }

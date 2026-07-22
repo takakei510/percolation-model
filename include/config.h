@@ -39,6 +39,8 @@ typedef struct {
     char walk_algorithm[32]; // kinetic / rosenbluth / perm
     int n_steps;
     int n_tours;
+    char tour_checkpoint_mode[32]; // none / log10
+    int tour_checkpoint_start;
     char start[32];          // center
     char boundary[32];       // free / periodic
     char spatial_backend[32]; // dense / hash

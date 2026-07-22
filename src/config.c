@@ -345,6 +345,8 @@ int config_load(const char *filename, Config *cfg) {
     cfg->hash_max_load_factor = 0.70;
     cfg->n_steps = 1000;
     cfg->n_tours = 1;
+    strcpy(cfg->tour_checkpoint_mode, "none");
+    cfg->tour_checkpoint_start = 1;
     cfg->save_trajectory = 0;
     cfg->save_trajectory_trials = 1;
     cfg->save_msd_distribution = 0;
@@ -415,6 +417,10 @@ int config_load(const char *filename, Config *cfg) {
             cfg->n_trials = atoi(value);
         } else if (strcmp(key, "n_tours") == 0) {
             cfg->n_tours = atoi(value);
+        } else if (strcmp(key, "tour_checkpoint_mode") == 0) {
+            sscanf(value, "%31s", cfg->tour_checkpoint_mode);
+        } else if (strcmp(key, "tour_checkpoint_start") == 0) {
+            cfg->tour_checkpoint_start = atoi(value);
         } else if (strcmp(key, "save_cluster_sizes") == 0) {
             cfg->save_cluster_sizes = atoi(value);
         } else if (strcmp(key, "save_top_coords") == 0) {
@@ -586,6 +592,22 @@ int config_load(const char *filename, Config *cfg) {
 
     if (cfg->n_tours <= 0) {
         fprintf(stderr, "n_tours must be > 0\n");
+        free_lifetime_checkpoint_trials(cfg);
+        free_msd_distribution_steps(cfg);
+        return 0;
+    }
+
+    if (strcmp(cfg->tour_checkpoint_mode, "none") != 0 &&
+        strcmp(cfg->tour_checkpoint_mode, "log10") != 0) {
+        fprintf(stderr, "Invalid tour_checkpoint_mode: %s\n", cfg->tour_checkpoint_mode);
+        free_lifetime_checkpoint_trials(cfg);
+        free_msd_distribution_steps(cfg);
+        return 0;
+    }
+
+    if (strcmp(cfg->tour_checkpoint_mode, "log10") == 0 &&
+        cfg->tour_checkpoint_start <= 0) {
+        fprintf(stderr, "tour_checkpoint_start must be > 0 for log10 mode\n");
         free_lifetime_checkpoint_trials(cfg);
         free_msd_distribution_steps(cfg);
         return 0;
