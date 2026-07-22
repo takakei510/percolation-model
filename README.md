@@ -14,6 +14,8 @@
 - Mean Square Displacement (MSD) 分析
 - 生存条件付き MSD サンプル分布の信頼性評価
 - 無限格子 hash backend による kinetic SAW
+- Rosenbluth weight による 2D SAW 推定
+- PERM (Pruned-Enriched Rosenbluth Method) による 2D SAW 推定
 
 ## ディレクトリ構成
 
@@ -132,10 +134,18 @@ C 実装のシミュレーションは設定ファイルを指定して実行し
 ### random_walk 固有パラメータ
 
 - `walk_type` : `rw` または `saw`
+- `walk_algorithm` : `kinetic`, `rosenbluth`, `perm`。省略時は `kinetic`
 - `n_steps` : ステップ数
+- `n_tours` : Rosenbluth / PERM の tour 数。`n_trials` とは別項目
 - `spatial_backend` : `dense` または `hash`。未指定時は `dense`
 - `boundary` : `free`, `periodic`, `infinite`
 - `hash_max_load_factor` : hash backend の上限 load factor
+- `perm_c_minus` : pruning 用係数。閾値は `perm_c_minus * z_estimate[n]`
+- `perm_c_plus` : enrichment 用係数。閾値は `perm_c_plus * z_estimate[n]`
+- `perm_min_tours_for_threshold` : 過去の completed tour がこの数未満なら pruning/enrichment を無効化
+- `perm_threshold_scheme` : 現在は `basic` のみ対応。将来の threshold 戦略切替用
+
+`partition sum` 推定値は tour 数で正規化した平均重みです。
 - `msd_sample_mode` : `exact`, `reservoir`, `none`
 - `msd_reservoir_size` : reservoir の最大保持数
 - `sampling_seed` : reservoir 用の独立 seed
@@ -150,6 +160,38 @@ C 実装のシミュレーションは設定ファイルを指定して実行し
 `spatial_backend=hash` かつ `boundary=infinite` のとき、`L` は不要です。これは equilibrium SAW ではなく、未訪問最近接点を一様に選んで進む kinetic SAW のままです。trapping、選択バイアス、生存条件付き分布は残ります。
 
 `dense + free` と `dense + periodic` は従来どおり、`hash + infinite` は新規対応です。`dense + infinite` と `hash + free/periodic` はエラーになります。
+
+### Rosenbluth / PERM
+
+この実装では 2D / `hash` / `infinite` / `saw` のみ対応します。`walk_algorithm=rosenbluth` は Rosenbluth 重み付けのみ、`walk_algorithm=perm` は pruning と enrichment を追加した PERM を実行します。`walk_algorithm` を省略した場合は従来どおり `kinetic` です。
+
+各 step で未訪問近傍数を $m_n$ とすると、Rosenbluth 重みは
+
+$$
+W_n = W_{n-1} m_n, \qquad W_0 = 1
+$$
+
+です。集計量は step ごとに `sum_weight`, `sum_weight_r2`, `sum_weight_squared`, `sample_count` を保持し、重み付き平均は
+
+$$
+\langle R_n^2 \rangle_w = \frac{\sum W_n R_n^2}{\sum W_n}
+$$
+
+partition sum 推定値は tour 数で正規化した
+
+$$
+Z_n \approx \frac{\sum W_n}{\text{completed tours}}
+$$
+
+です。`effective_sample_size` は
+
+$$
+\mathrm{ESS}_n = \frac{(\sum W_n)^2}{\sum W_n^2}
+$$
+
+で計算しますが、branch 間には相関があるため、独立サンプル数そのものではありません。
+
+PERM では、`weight < lower_threshold[n]` の branch を確率 $1/2$ で削除し、生存した場合は weight を 2 倍します。期待重みは保存されます。`weight > upper_threshold[n]` の branch は 2 分割し、各 branch の weight を 1/2 にして独立に継続します。閾値は completed tour から得た `z_estimate[n]` に基づき、`completed_tours < perm_min_tours_for_threshold` の間は pruning/enrichment を行いません。
 
 ## 代表的な config 例
 
@@ -197,6 +239,9 @@ save_top_coords=0
 ## 出力データ
 
 - `data/.../rw.csv`, `data/.../saw.csv` : RW / SAW 統計データ
+- `data/.../rosenbluth/rosenbluth.csv` : Rosenbluth の重み付き統計
+- `data/.../perm/perm.csv` : PERM の重み付き統計
+- `data/.../perm/perm_tours.csv` : tour 診断データ
 - `data/.../msd_samples.csv` : 生存条件付き MSD サンプルの生データ
 - `data/.../msd_distribution.csv` : `msd_samples.csv` の互換エイリアス
 - `data/.../msd_reservoir_samples.csv` : reservoir sample の生データ
@@ -205,6 +250,28 @@ save_top_coords=0
 - `data/.../final_steps.csv` : 最終ステップ / 寿命データ
 - `data/.../summary.csv` : single / sweep の集計結果
 - `data/.../time_vs_L.csv` : size_sweep の L 依存結果
+
+`perm.csv` の列:
+
+```text
+step,weighted_mean_r2,weighted_mean_r2_standard_error,partition_sum_estimate,partition_sum_standard_error,log_partition_sum,partition_sum_mantissa,partition_sum_exponent,sample_count,nonzero_tours,completed_tours,branch_weight_ess,tour_weight_ess,mean_weight,max_weight,lower_threshold,upper_threshold,threshold_enabled
+```
+
+`perm_tours.csv` の列:
+
+```text
+tour,max_reached_step,generated_branches,pruned_count,enriched_count,max_stack_size,tour_total_nodes,tour_clone_count,clone_count,clone_time,copied_path_elements,copied_hash_capacity
+```
+
+`simulation_metadata.json` には `walk_algorithm`, `walk_type`, `dim`, `boundary`, `spatial_backend`, `n_steps`, `n_tours`, `seed`, `actual_seed`, `perm_c_minus`, `perm_c_plus`, `perm_min_tours_for_threshold` を含めます。
+
+`walk_algorithm=perm` の出力先は kinetic SAW と分離してください。たとえば `data/2d/random_walk/saw/kinetic/`, `data/2d/random_walk/saw/rosenbluth/`, `data/2d/random_walk/saw/perm/` のように分けます。
+
+### 既知の制約
+
+- 現時点で対応するのは 2D / `hash` / `infinite` / `saw` のみです
+- SAT, 接触相互作用 $\omega$, 3D, FlatPERM, bootstrap, weighted least squares, MPI / OpenMP は未実装です
+- Prellberg 論文ベースの拡張は今後の課題です
 
 ### クラスタ構造データ
 

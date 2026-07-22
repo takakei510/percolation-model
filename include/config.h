@@ -36,7 +36,9 @@ typedef struct {
 
     //random_walk
     char walk_type[64];      // rw / saw
+    char walk_algorithm[32]; // kinetic / rosenbluth / perm
     int n_steps;
+    int n_tours;
     char start[32];          // center
     char boundary[32];       // free / periodic
     char spatial_backend[32]; // dense / hash
@@ -51,6 +53,10 @@ typedef struct {
     char sampling_seed_str[128];
     unsigned long long resolved_sampling_seed;
     int resolved_sampling_seed_set;
+    double perm_c_minus;
+    double perm_c_plus;
+    int perm_min_tours_for_threshold;
+    char perm_threshold_scheme[32];
     char msd_distribution_steps[256];
     int *msd_distribution_step_values;
     int msd_distribution_step_count;

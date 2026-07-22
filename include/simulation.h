@@ -33,5 +33,7 @@ SweepStats compute_sweep_stats_for_p_bfs_fast(int dim, int L, double p, int n_tr
 
 //random_walk
 int run_random_walk_simulation(const Config *cfg);
+int run_rosenbluth_simulation(const Config *cfg);
+int run_perm_simulation(const Config *cfg);
 
 #endif

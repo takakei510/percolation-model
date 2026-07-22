@@ -1,0 +1,10 @@
+mode=random_walk
+walk_type=saw
+walk_algorithm=rosenbluth
+dim=2
+spatial_backend=hash
+boundary=infinite
+n_steps=12
+n_tours=100000
+seed=12345
+output=data/2d/random_walk/saw/rosenbluth/N12_Tours100000/rosenbluth.csv

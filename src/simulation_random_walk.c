@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include "config.h"
+#include "perm.h"
 #include "random_walk.h"
 
 static double now_seconds(void)
@@ -400,6 +401,14 @@ static void write_exact_sample_row(FILE *fp, int trial, int step, double r2, int
 
 int run_random_walk_simulation(const Config *cfg)
 {
+    if (strcmp(cfg->walk_algorithm, "rosenbluth") == 0) {
+        return run_rosenbluth_simulation(cfg);
+    }
+
+    if (strcmp(cfg->walk_algorithm, "perm") == 0) {
+        return run_perm_simulation(cfg);
+    }
+
     WalkTiming total_timing = {0.0, 0.0, 0.0, 0.0};
     int use_visited = (strcmp(cfg->walk_type, "saw") == 0) || (strcmp(cfg->walk_type, "death_on_contact") == 0);
     int use_summary = cfg->save_msd_distribution;

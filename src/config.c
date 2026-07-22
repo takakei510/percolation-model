@@ -338,11 +338,13 @@ int config_load(const char *filename, Config *cfg) {
 
     //ramdom_walk
     strcpy(cfg->walk_type, "rw");
+    strcpy(cfg->walk_algorithm, "kinetic");
     strcpy(cfg->start, "center");
     strcpy(cfg->boundary, "free");
     strcpy(cfg->spatial_backend, "dense");
     cfg->hash_max_load_factor = 0.70;
     cfg->n_steps = 1000;
+    cfg->n_tours = 1;
     cfg->save_trajectory = 0;
     cfg->save_trajectory_trials = 1;
     cfg->save_msd_distribution = 0;
@@ -352,6 +354,10 @@ int config_load(const char *filename, Config *cfg) {
     cfg->sampling_seed_str[0] = '\0';
     cfg->resolved_sampling_seed = 0ULL;
     cfg->resolved_sampling_seed_set = 0;
+    cfg->perm_c_minus = 0.2;
+    cfg->perm_c_plus = 2.0;
+    cfg->perm_min_tours_for_threshold = 100;
+    strcpy(cfg->perm_threshold_scheme, "basic");
     cfg->save_lifetime_checkpoints = 0;
     cfg->msd_distribution_steps[0] = '\0';
     cfg->msd_distribution_step_values = NULL;
@@ -407,6 +413,8 @@ int config_load(const char *filename, Config *cfg) {
             cfg->dp = atof(value);
         } else if (strcmp(key, "n_trials") == 0) {
             cfg->n_trials = atoi(value);
+        } else if (strcmp(key, "n_tours") == 0) {
+            cfg->n_tours = atoi(value);
         } else if (strcmp(key, "save_cluster_sizes") == 0) {
             cfg->save_cluster_sizes = atoi(value);
         } else if (strcmp(key, "save_top_coords") == 0) {
@@ -424,6 +432,8 @@ int config_load(const char *filename, Config *cfg) {
             sscanf(value, "%255s", cfg->output);
         } else if (strcmp(key, "walk_type") == 0) {
             sscanf(value, "%63s", cfg->walk_type);
+        } else if (strcmp(key, "walk_algorithm") == 0) {
+            sscanf(value, "%31s", cfg->walk_algorithm);
         } else if (strcmp(key, "n_steps") == 0) {
             cfg->n_steps = atoi(value);
         } else if (strcmp(key, "start") == 0) {
@@ -450,6 +460,14 @@ int config_load(const char *filename, Config *cfg) {
             strncpy(cfg->sampling_seed_str, value, sizeof(cfg->sampling_seed_str) - 1);
             cfg->sampling_seed_str[sizeof(cfg->sampling_seed_str) - 1] = '\0';
             cfg->sampling_seed_provided = 1;
+        } else if (strcmp(key, "perm_c_minus") == 0) {
+            cfg->perm_c_minus = atof(value);
+        } else if (strcmp(key, "perm_c_plus") == 0) {
+            cfg->perm_c_plus = atof(value);
+        } else if (strcmp(key, "perm_min_tours_for_threshold") == 0) {
+            cfg->perm_min_tours_for_threshold = atoi(value);
+        } else if (strcmp(key, "perm_threshold_scheme") == 0) {
+            sscanf(value, "%31s", cfg->perm_threshold_scheme);
         } else if (strcmp(key, "msd_distribution_steps") == 0) {
             sscanf(value, "%255s", cfg->msd_distribution_steps);
         } else if (strcmp(key, "save_lifetime_checkpoints") == 0) {
@@ -557,6 +575,41 @@ int config_load(const char *filename, Config *cfg) {
             free_msd_distribution_steps(cfg);
             return 0;
         }
+    }
+
+    if (strcmp(cfg->walk_algorithm, "kinetic") != 0 && strcmp(cfg->walk_algorithm, "rosenbluth") != 0 && strcmp(cfg->walk_algorithm, "perm") != 0) {
+        fprintf(stderr, "Invalid walk_algorithm: %s\n", cfg->walk_algorithm);
+        free_lifetime_checkpoint_trials(cfg);
+        free_msd_distribution_steps(cfg);
+        return 0;
+    }
+
+    if (cfg->n_tours <= 0) {
+        fprintf(stderr, "n_tours must be > 0\n");
+        free_lifetime_checkpoint_trials(cfg);
+        free_msd_distribution_steps(cfg);
+        return 0;
+    }
+
+    if (!(cfg->perm_c_minus > 0.0) || !(cfg->perm_c_plus > 0.0) || cfg->perm_c_minus >= cfg->perm_c_plus) {
+        fprintf(stderr, "perm thresholds must satisfy 0 < perm_c_minus < perm_c_plus\n");
+        free_lifetime_checkpoint_trials(cfg);
+        free_msd_distribution_steps(cfg);
+        return 0;
+    }
+
+    if (cfg->perm_min_tours_for_threshold < 0) {
+        fprintf(stderr, "perm_min_tours_for_threshold must be >= 0\n");
+        free_lifetime_checkpoint_trials(cfg);
+        free_msd_distribution_steps(cfg);
+        return 0;
+    }
+
+    if (strcmp(cfg->perm_threshold_scheme, "basic") != 0) {
+        fprintf(stderr, "Invalid perm_threshold_scheme: %s\n", cfg->perm_threshold_scheme);
+        free_lifetime_checkpoint_trials(cfg);
+        free_msd_distribution_steps(cfg);
+        return 0;
     }
 
     return 1;
