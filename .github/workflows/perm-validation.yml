@@ -1,0 +1,164 @@
+name: PERM validation
+
+on:
+  push:
+    branches: [feature/perm]
+    paths:
+      - "src/**"
+      - "include/**"
+      - "Makefile"
+      - ".github/workflows/perm-validation.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "include/**"
+      - "Makefile"
+      - ".github/workflows/perm-validation.yml"
+  workflow_dispatch:
+
+jobs:
+  validate-perm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: make clean && make
+
+      - name: Create CI configs
+        shell: bash
+        run: |
+          mkdir -p tmp/perm-ci/rosenbluth
+          mkdir -p tmp/perm-ci/perm-disabled
+          mkdir -p tmp/perm-ci/perm
+
+          cat > tmp/perm-ci/rosenbluth/config.txt <<'EOF'
+          mode=random_walk
+          walk_type=saw
+          walk_algorithm=rosenbluth
+          dim=2
+          spatial_backend=hash
+          boundary=infinite
+          n_steps=100
+          n_tours=1000
+          seed=12345
+          output=tmp/perm-ci/rosenbluth/rosenbluth.csv
+          EOF
+
+          cat > tmp/perm-ci/perm-disabled/config.txt <<'EOF'
+          mode=random_walk
+          walk_type=saw
+          walk_algorithm=perm
+          dim=2
+          spatial_backend=hash
+          boundary=infinite
+          n_steps=100
+          n_tours=1000
+          seed=12345
+          perm_c_minus=0.2
+          perm_c_plus=2.0
+          perm_min_tours_for_threshold=1001
+          output=tmp/perm-ci/perm-disabled/perm.csv
+          EOF
+
+          cat > tmp/perm-ci/perm/config.txt <<'EOF'
+          mode=random_walk
+          walk_type=saw
+          walk_algorithm=perm
+          dim=2
+          spatial_backend=hash
+          boundary=infinite
+          n_steps=100
+          n_tours=1000
+          seed=12345
+          perm_c_minus=0.2
+          perm_c_plus=2.0
+          perm_min_tours_for_threshold=100
+          output=tmp/perm-ci/perm/perm.csv
+          EOF
+
+      - name: Run Rosenbluth and PERM smoke simulations
+        run: |
+          ./build/main tmp/perm-ci/rosenbluth/config.txt | tee tmp/perm-ci/rosenbluth/run.log
+          ./build/main tmp/perm-ci/perm-disabled/config.txt | tee tmp/perm-ci/perm-disabled/run.log
+          ./build/main tmp/perm-ci/perm/config.txt | tee tmp/perm-ci/perm/run.log
+
+      - name: Validate CSV outputs
+        shell: python
+        run: |
+          import math
+          from pathlib import Path
+          import pandas as pd
+
+          root = Path("tmp/perm-ci")
+          ros_path = root / "rosenbluth" / "rosenbluth.csv"
+          disabled_path = root / "perm-disabled" / "perm.csv"
+          perm_path = root / "perm" / "perm.csv"
+
+          for path in (ros_path, disabled_path, perm_path):
+              if not path.exists():
+                  raise SystemExit(f"Missing output: {path}")
+
+          ros = pd.read_csv(ros_path)
+          disabled = pd.read_csv(disabled_path)
+          perm = pd.read_csv(perm_path)
+
+          required = {
+              "step",
+              "weighted_mean_r2",
+              "partition_sum_estimate",
+              "sample_count",
+              "nonzero_tours",
+              "completed_tours",
+              "branch_weight_ess",
+              "tour_weight_ess",
+          }
+          for label, frame in (("rosenbluth", ros), ("perm-disabled", disabled), ("perm", perm)):
+              missing = required.difference(frame.columns)
+              if missing:
+                  raise SystemExit(f"{label}: missing columns {sorted(missing)}")
+              if len(frame) != 101:
+                  raise SystemExit(f"{label}: expected 101 step rows, got {len(frame)}")
+              if frame["step"].tolist() != list(range(101)):
+                  raise SystemExit(f"{label}: unexpected step sequence")
+
+          compare_columns = [
+              "step",
+              "weighted_mean_r2",
+              "partition_sum_estimate",
+              "sample_count",
+              "nonzero_tours",
+              "completed_tours",
+              "branch_weight_ess",
+              "tour_weight_ess",
+          ]
+          if not ros[compare_columns].equals(disabled[compare_columns]):
+              diff = ros[compare_columns].compare(disabled[compare_columns])
+              print(diff.head(20).to_string())
+              raise SystemExit("Threshold-disabled PERM does not exactly match Rosenbluth")
+
+          final = perm.loc[perm["step"] == 100]
+          if len(final) != 1:
+              raise SystemExit("PERM output does not contain exactly one step=100 row")
+
+          for column in ("weighted_mean_r2", "partition_sum_estimate", "branch_weight_ess", "tour_weight_ess"):
+              value = float(final.iloc[0][column])
+              if not math.isfinite(value) or value <= 0.0:
+                  raise SystemExit(f"PERM step=100 has invalid {column}: {value}")
+
+          if int(final.iloc[0]["completed_tours"]) != 1000:
+              raise SystemExit("PERM completed_tours is not 1000")
+
+          print("Threshold-disabled PERM matches Rosenbluth exactly.")
+          print(final[sorted(required)].to_string(index=False))
+
+      - name: Upload validation outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perm-validation-results
+          path: tmp/perm-ci
+          retention-days: 14
