@@ -1,0 +1,79 @@
+name: Apply tour checkpoint refactor
+
+on:
+  push:
+    branches: [feature/perm]
+    paths:
+      - "scripts/dev/apply_tour_checkpoint_refactor.py"
+      - ".github/workflows/apply-tour-checkpoint-refactor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-refactor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/perm
+          fetch-depth: 0
+
+      - name: Apply guarded source refactor
+        run: python scripts/dev/apply_tour_checkpoint_refactor.py
+
+      - name: Build modified source
+        run: make clean && make
+
+      - name: Run checkpoint smoke test
+        shell: bash
+        run: |
+          mkdir -p tmp/checkpoint-smoke
+          cat > tmp/checkpoint-smoke/config.txt <<'EOF'
+          mode=random_walk
+          walk_type=saw
+          walk_algorithm=perm
+          dim=2
+          spatial_backend=hash
+          boundary=infinite
+          n_steps=20
+          n_tours=1000
+          tour_checkpoint_mode=log10
+          tour_checkpoint_start=10
+          seed=12345
+          perm_c_minus=0.2
+          perm_c_plus=2.0
+          perm_min_tours_for_threshold=100
+          output=tmp/checkpoint-smoke/perm.csv
+          EOF
+          ./build/main tmp/checkpoint-smoke/config.txt
+          python - <<'PY'
+          import pandas as pd
+          path = 'tmp/checkpoint-smoke/weighted_convergence.csv'
+          df = pd.read_csv(path)
+          expected = {10, 100, 1000}
+          actual = set(df['checkpoint_tours'].unique())
+          if actual != expected:
+              raise SystemExit(f'unexpected checkpoints: {sorted(actual)}')
+          counts = df.groupby('checkpoint_tours').size().to_dict()
+          if any(count != 21 for count in counts.values()):
+              raise SystemExit(f'unexpected row counts: {counts}')
+          print(df[df['step'] == 20].to_string(index=False))
+          PY
+
+      - name: Commit generated source changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add include/config.h src/config.c src/perm.c
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git commit -m "Add tour checkpoint convergence output"
+          git push origin HEAD:feature/perm
