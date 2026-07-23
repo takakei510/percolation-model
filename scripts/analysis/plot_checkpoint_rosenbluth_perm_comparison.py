@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Plot Rosenbluth/PERM convergence directly from checkpoint CSV files.
 
-The script compares the requested terminal step N.  Long Rosenbluth walks may
-have no surviving samples at that step, so zero/NaN estimates are treated as
-"unavailable" rather than causing logarithmic plots to fail.
+Partition sums for long walks can exceed IEEE-754 float64 range.  Therefore
+partition-sum columns are read as strings and handled with ``decimal.Decimal``.
+The partition-sum figure is plotted as log10(Z_N), while relative uncertainty
+is evaluated as SE(Z_N) / Z_N without converting either value to float first.
 """
 
 from __future__ import annotations
 
 import argparse
+from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -23,8 +25,15 @@ REQUIRED_COLUMNS = {
     "weighted_mean_r2_standard_error",
     "partition_sum_estimate",
     "partition_sum_standard_error",
+    "sample_count",
+    "nonzero_tours",
     "branch_weight_ess",
     "tour_weight_ess",
+}
+
+DECIMAL_COLUMNS = {
+    "partition_sum_estimate",
+    "partition_sum_standard_error",
 }
 
 
@@ -44,7 +53,10 @@ def load_terminal_step(path: Path, walk_length: int, label: str) -> pd.DataFrame
     if not path.exists():
         raise FileNotFoundError(f"{label} input not found: {path}")
 
-    frame = pd.read_csv(path)
+    frame = pd.read_csv(
+        path,
+        dtype={column: "string" for column in DECIMAL_COLUMNS},
+    )
     missing = REQUIRED_COLUMNS.difference(frame.columns)
     if missing:
         raise ValueError(f"{label} input is missing columns: {sorted(missing)}")
@@ -70,18 +82,128 @@ def load_terminal_step(path: Path, walk_length: int, label: str) -> pd.DataFrame
     return terminal
 
 
+def parse_decimal(value: object) -> Decimal | None:
+    if value is None or pd.isna(value):
+        return None
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    if not parsed.is_finite():
+        return None
+    return parsed
+
+
+def decimal_is_positive(value: object) -> bool:
+    parsed = parse_decimal(value)
+    return parsed is not None and parsed > 0
+
+
+def decimal_log10(value: object) -> float:
+    parsed = parse_decimal(value)
+    if parsed is None or parsed <= 0:
+        return np.nan
+    with localcontext() as context:
+        context.prec = 50
+        return float(parsed.log10())
+
+
+def decimal_ratio(numerator: object, denominator: object) -> float:
+    numerator_decimal = parse_decimal(numerator)
+    denominator_decimal = parse_decimal(denominator)
+    if (
+        numerator_decimal is None
+        or denominator_decimal is None
+        or numerator_decimal < 0
+        or denominator_decimal <= 0
+    ):
+        return np.nan
+    with localcontext() as context:
+        context.prec = 50
+        return float(numerator_decimal / denominator_decimal)
+
+
+def partition_log_values(frame: pd.DataFrame) -> np.ndarray:
+    return np.asarray(
+        [decimal_log10(value) for value in frame["partition_sum_estimate"]],
+        dtype=float,
+    )
+
+
+def partition_log_errors(frame: pd.DataFrame) -> np.ndarray:
+    lower_errors: list[float] = []
+    upper_errors: list[float] = []
+
+    for estimate_raw, error_raw in zip(
+        frame["partition_sum_estimate"],
+        frame["partition_sum_standard_error"],
+        strict=True,
+    ):
+        estimate = parse_decimal(estimate_raw)
+        error = parse_decimal(error_raw)
+        if estimate is None or error is None or estimate <= 0 or error < 0:
+            lower_errors.append(np.nan)
+            upper_errors.append(np.nan)
+            continue
+
+        with localcontext() as context:
+            context.prec = 50
+            center = estimate.log10()
+            upper = (estimate + error).log10() - center
+            if error < estimate:
+                lower = center - (estimate - error).log10()
+            else:
+                lower = Decimal("NaN")
+
+        lower_errors.append(float(lower) if lower.is_finite() else np.nan)
+        upper_errors.append(float(upper) if upper.is_finite() else np.nan)
+
+    return np.asarray([lower_errors, upper_errors], dtype=float)
+
+
+def relative_uncertainty(frame: pd.DataFrame) -> np.ndarray:
+    return np.asarray(
+        [
+            decimal_ratio(error, estimate)
+            for error, estimate in zip(
+                frame["partition_sum_standard_error"],
+                frame["partition_sum_estimate"],
+                strict=True,
+            )
+        ],
+        dtype=float,
+    )
+
+
 def finite_nonnegative(values: pd.Series) -> np.ndarray:
-    array = values.to_numpy(dtype=float)
+    array = pd.to_numeric(values, errors="coerce").to_numpy(dtype=float)
     return np.where(np.isfinite(array) & (array >= 0.0), array, np.nan)
 
 
-def positive_mask(values: pd.Series | np.ndarray) -> np.ndarray:
-    array = np.asarray(values, dtype=float)
+def positive_numeric_mask(values: pd.Series | np.ndarray) -> np.ndarray:
+    array = pd.to_numeric(pd.Series(values), errors="coerce").to_numpy(dtype=float)
     return np.isfinite(array) & (array > 0.0)
 
 
-def finite_mask(values: pd.Series | np.ndarray) -> np.ndarray:
-    return np.isfinite(np.asarray(values, dtype=float))
+def finite_numeric_mask(values: pd.Series | np.ndarray) -> np.ndarray:
+    array = pd.to_numeric(pd.Series(values), errors="coerce").to_numpy(dtype=float)
+    return np.isfinite(array)
+
+
+def terminal_available(frame: pd.DataFrame) -> np.ndarray:
+    sample_count = pd.to_numeric(frame["sample_count"], errors="coerce").to_numpy()
+    nonzero_tours = pd.to_numeric(frame["nonzero_tours"], errors="coerce").to_numpy()
+    positive_estimate = np.asarray(
+        [decimal_is_positive(value) for value in frame["partition_sum_estimate"]],
+        dtype=bool,
+    )
+    return (
+        np.isfinite(sample_count)
+        & np.isfinite(nonzero_tours)
+        & (sample_count > 0)
+        & (nonzero_tours > 0)
+        & positive_estimate
+    )
 
 
 def save_figure(fig: plt.Figure, path: Path, dpi: int) -> None:
@@ -105,37 +227,6 @@ def add_unavailable_note(ax: plt.Axes, labels: list[str]) -> None:
         )
 
 
-def plot_positive_series(
-    ax: plt.Axes,
-    frame: pd.DataFrame,
-    y_column: str,
-    label: str,
-    *,
-    yerr_column: str | None = None,
-    linestyle: str = "-",
-) -> bool:
-    mask = positive_mask(frame[y_column])
-    if not mask.any():
-        return False
-
-    x = frame.loc[mask, "checkpoint_tours"].to_numpy(dtype=float)
-    y = frame.loc[mask, y_column].to_numpy(dtype=float)
-    if yerr_column is None:
-        ax.plot(x, y, marker="o", linestyle=linestyle, label=label)
-    else:
-        yerr = finite_nonnegative(frame.loc[mask, yerr_column])
-        ax.errorbar(
-            x,
-            y,
-            yerr=yerr,
-            marker="o",
-            linestyle=linestyle,
-            capsize=4,
-            label=label,
-        )
-    return True
-
-
 def plot_partition_sum(
     ros: pd.DataFrame,
     perm: pd.DataFrame,
@@ -147,43 +238,32 @@ def plot_partition_sum(
     unavailable: list[str] = []
 
     for label, frame in (("Rosenbluth", ros), ("PERM", perm)):
-        ok = plot_positive_series(
-            ax,
-            frame,
-            "partition_sum_estimate",
-            label,
-            yerr_column="partition_sum_standard_error",
-        )
-        if not ok:
+        y = partition_log_values(frame)
+        mask = terminal_available(frame) & np.isfinite(y)
+        if not mask.any():
             unavailable.append(label)
+            continue
+
+        tours = frame["checkpoint_tours"].to_numpy(dtype=float)
+        yerr = partition_log_errors(frame)
+        ax.errorbar(
+            tours[mask],
+            y[mask],
+            yerr=yerr[:, mask],
+            marker="o",
+            capsize=4,
+            label=label,
+        )
 
     ax.set_xscale("log")
-    if len(unavailable) < 2:
-        ax.set_yscale("log")
     ax.set_xlabel("Number of completed tours")
-    ax.set_ylabel(rf"Partition sum estimate $\hat{{Z}}_{{{walk_length}}}$")
+    ax.set_ylabel(rf"$\log_{{10}} \hat{{Z}}_{{{walk_length}}}$")
     ax.set_title(f"Partition sum convergence at N={walk_length}")
     ax.grid(True, which="both", alpha=0.35)
     if ax.lines:
         ax.legend()
     add_unavailable_note(ax, unavailable)
     save_figure(fig, output_dir / "partition_sum_convergence.png", dpi)
-
-
-def relative_uncertainty(frame: pd.DataFrame) -> np.ndarray:
-    estimate = frame["partition_sum_estimate"].to_numpy(dtype=float)
-    standard_error = frame["partition_sum_standard_error"].to_numpy(dtype=float)
-    return np.divide(
-        standard_error,
-        np.abs(estimate),
-        out=np.full_like(standard_error, np.nan),
-        where=(
-            np.isfinite(standard_error)
-            & np.isfinite(estimate)
-            & (estimate > 0.0)
-            & (standard_error >= 0.0)
-        ),
-    )
 
 
 def plot_relative_uncertainty(
@@ -199,7 +279,7 @@ def plot_relative_uncertainty(
 
     for label, frame in (("Rosenbluth", ros), ("PERM", perm)):
         relative = relative_uncertainty(frame)
-        mask = positive_mask(relative)
+        mask = terminal_available(frame) & np.isfinite(relative) & (relative > 0)
         if not mask.any():
             unavailable.append(label)
             continue
@@ -219,7 +299,7 @@ def plot_relative_uncertainty(
             plotted_reference = True
 
     ax.set_xscale("log")
-    if len(unavailable) < 2:
+    if ax.lines:
         ax.set_yscale("log")
     ax.set_xlabel("Number of completed tours")
     ax.set_ylabel(rf"Relative uncertainty of $\hat{{Z}}_{{{walk_length}}}$")
@@ -235,6 +315,23 @@ def plot_relative_uncertainty(
     )
 
 
+def plot_positive_numeric_series(
+    ax: plt.Axes,
+    frame: pd.DataFrame,
+    y_column: str,
+    label: str,
+    *,
+    linestyle: str = "-",
+) -> bool:
+    mask = positive_numeric_mask(frame[y_column]) & terminal_available(frame)
+    if not mask.any():
+        return False
+    x = frame.loc[mask, "checkpoint_tours"].to_numpy(dtype=float)
+    y = pd.to_numeric(frame.loc[mask, y_column], errors="coerce").to_numpy(dtype=float)
+    ax.plot(x, y, marker="o", linestyle=linestyle, label=label)
+    return True
+
+
 def plot_ess(
     ros: pd.DataFrame,
     perm: pd.DataFrame,
@@ -244,20 +341,19 @@ def plot_ess(
 ) -> None:
     fig, ax = plt.subplots(figsize=(10, 7))
     unavailable: list[str] = []
-
     series = (
         ("Rosenbluth ESS", ros, "tour_weight_ess", "-"),
         ("PERM branch-weight ESS", perm, "branch_weight_ess", "-"),
         ("PERM tour-weight ESS", perm, "tour_weight_ess", "--"),
     )
     for label, frame, column, linestyle in series:
-        if not plot_positive_series(
+        if not plot_positive_numeric_series(
             ax, frame, column, label, linestyle=linestyle
         ):
             unavailable.append(label)
 
     ax.set_xscale("log")
-    if len(unavailable) < len(series):
+    if ax.lines:
         ax.set_yscale("log")
     ax.set_xlabel("Number of completed tours")
     ax.set_ylabel("Effective sample size")
@@ -280,13 +376,13 @@ def plot_weighted_mean_r2(
     unavailable: list[str] = []
 
     for label, frame in (("Rosenbluth", ros), ("PERM", perm)):
-        mask = finite_mask(frame["weighted_mean_r2"])
+        mask = finite_numeric_mask(frame["weighted_mean_r2"]) & terminal_available(frame)
         if not mask.any():
             unavailable.append(label)
             continue
         ax.errorbar(
             frame.loc[mask, "checkpoint_tours"],
-            frame.loc[mask, "weighted_mean_r2"],
+            pd.to_numeric(frame.loc[mask, "weighted_mean_r2"], errors="coerce"),
             yerr=finite_nonnegative(
                 frame.loc[mask, "weighted_mean_r2_standard_error"]
             ),
@@ -313,8 +409,12 @@ def write_comparison_csv(
 ) -> None:
     ros = ros.copy()
     perm = perm.copy()
+    ros["partition_sum_log10"] = partition_log_values(ros)
+    perm["partition_sum_log10"] = partition_log_values(perm)
     ros["partition_sum_relative_uncertainty"] = relative_uncertainty(ros)
     perm["partition_sum_relative_uncertainty"] = relative_uncertainty(perm)
+    ros["terminal_available"] = terminal_available(ros)
+    perm["terminal_available"] = terminal_available(perm)
 
     ros_columns = {
         column: f"ros_{column}"
@@ -334,26 +434,24 @@ def write_comparison_csv(
     )
     merged = merged.sort_values("checkpoint_tours").reset_index(drop=True)
 
-    ros_ess = merged["ros_tour_weight_ess"].to_numpy(dtype=float)
-    perm_tour_ess = merged["perm_tour_weight_ess"].to_numpy(dtype=float)
-    perm_branch_ess = merged["perm_branch_weight_ess"].to_numpy(dtype=float)
+    ros_ess = pd.to_numeric(merged["ros_tour_weight_ess"], errors="coerce").to_numpy()
+    perm_tour_ess = pd.to_numeric(
+        merged["perm_tour_weight_ess"], errors="coerce"
+    ).to_numpy()
+    perm_branch_ess = pd.to_numeric(
+        merged["perm_branch_weight_ess"], errors="coerce"
+    ).to_numpy()
     merged["perm_to_ros_tour_ess_ratio"] = np.divide(
         perm_tour_ess,
         ros_ess,
         out=np.full(len(merged), np.nan),
-        where=np.isfinite(ros_ess) & (ros_ess > 0.0),
+        where=np.isfinite(ros_ess) & (ros_ess > 0),
     )
     merged["perm_branch_to_tour_ess_ratio"] = np.divide(
         perm_branch_ess,
         perm_tour_ess,
         out=np.full(len(merged), np.nan),
-        where=np.isfinite(perm_tour_ess) & (perm_tour_ess > 0.0),
-    )
-    merged["ros_terminal_available"] = positive_mask(
-        merged["ros_partition_sum_estimate"]
-    )
-    merged["perm_terminal_available"] = positive_mask(
-        merged["perm_partition_sum_estimate"]
+        where=np.isfinite(perm_tour_ess) & (perm_tour_ess > 0),
     )
 
     merged.to_csv(output_path, index=False)
@@ -394,11 +492,11 @@ def main() -> None:
         args.output_dir / "checkpoint_comparison.csv",
     )
 
-    ros_available = int(positive_mask(ros["partition_sum_estimate"]).sum())
-    perm_available = int(positive_mask(perm["partition_sum_estimate"]).sum())
+    ros_available = int(terminal_available(ros).sum())
+    perm_available = int(terminal_available(perm).sum())
     print(
         f"Completed checkpoint comparison for N={args.walk_length}. "
-        f"Positive terminal estimates: Rosenbluth={ros_available}/{len(ros)}, "
+        f"Available terminal checkpoints: Rosenbluth={ros_available}/{len(ros)}, "
         f"PERM={perm_available}/{len(perm)}."
     )
 
